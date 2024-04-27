@@ -1,0 +1,25 @@
+abigen --abi=./abis/ERC20.json --pkg=erc20 --out=ERC20.go
+abigen --abi=./abis/VotiumMerkle.json --pkg=votiumMerkle --out=VotiumMerkle.go
+abigen --abi=./abis/QuestDistributor.json --pkg=questDistributor --out=QuestDistributor.go
+abigen --abi=./abis/VotemarketV1.json --pkg=votemarketV1 --out=VotemarketV1.go
+abigen --abi=./abis/VotemarketV2.json --pkg=votemarketV2 --out=VotemarketV2.go
+abigen --abi=./abis/YBribeV3.json --pkg=yBribeV3 --out=YBribeV3.go
+
+abigen --abi=./abis/VotiumVECrv.json --pkg=votiumVECrv --out=VotiumVECrv.go
+abigen --abi=./abis/VotiumVLCVXOld.json --pkg=votiumVLCVXOld --out=VotiumVLCVXOld.go
+abigen --abi=./abis/VotiumVLCVXV2.json --pkg=votiumVLCVXV2 --out=VotiumVLCVXV2.go
+abigen --abi=./abis/CurveGC.json --pkg=curveGC --out=CurveGC.go
+abigen --abi=./abis/CurveGCComplete.json --pkg=curveGCComplete --out=CurveGCComplete.go
+abigen --abi=./abis/Voter.json --pkg=voter --out=Voter.go
+abigen --abi=./abis/Crv.json --pkg=crv --out=Crv.go
+abigen --abi=./abis/CurveGauge.json --pkg=curveGauge --out=CurveGauge.go
+abigen --abi=./abis/CurvePool.json --pkg=curvePool --out=CurvePool.go
+
+abigen --abi=./abis/CrvUsdControllerFactory.json --pkg=crvUsdControllerFactory --out=CrvUsdControllerFactory.go
+abigen --abi=./abis/CrvUsdController.json --pkg=crvUsdController --out=CrvUsdController.go
+abigen --abi=./abis/CrvUsdMonetaryPolicy.json --pkg=crvUsdMonetaryPolicy --out=CrvUsdMonetaryPolicy.go
+abigen --abi=./abis/CrvUsdAmm.json --pkg=crvUsdAmm --out=CrvUsdAmm.go  
+abigen --abi=./abis/CrvUsdOracle.json --pkg=crvUsdOracle --out=CrvUsdOracle.go  
+abigen --abi=./abis/PegKeeper.json --pkg=pegKeeper --out=PegKeeper.go  
+abigen --abi=./abis/PegKeeperPool.json --pkg=pegKeeperPool --out=PegKeeperPool.go
+abigen --abi=./abis/PoolOwnerPendingFees.json --pkg=poolOwnerPendingFees --out=PoolOwnerPendingFees.go

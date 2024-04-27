@@ -1,0 +1,34 @@
+[
+    {
+        "name": "Deposit",
+        "inputs": [
+            {
+                "type": "address",
+                "name": "provider",
+                "indexed": true
+            },
+            {
+                "type": "uint256",
+                "name": "value",
+                "indexed": false
+            },
+            {
+                "type": "uint256",
+                "name": "locktime",
+                "indexed": true
+            },
+            {
+                "type": "int128",
+                "name": "type",
+                "indexed": false
+            },
+            {
+                "type": "uint256",
+                "name": "ts",
+                "indexed": false
+            }
+        ],
+        "anonymous": false,
+        "type": "event"
+    }
+]
