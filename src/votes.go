@@ -99,8 +99,10 @@ func FetchVotes(client *ethclient.Client, currentBlock uint64) {
 			}
 
 			// Check type
+			isOwnership := strings.EqualFold(vLog.Address.Hex(), CURVE_OWNERSHIP_VOTER.Hex())
+
 			voteType := PARAMETER
-			if strings.EqualFold(vLog.Address.Hex(), CURVE_OWNERSHIP_VOTER.Hex()) {
+			if isOwnership {
 				voteType = OWNERSHIP
 			}
 
@@ -114,6 +116,9 @@ func FetchVotes(client *ethclient.Client, currentBlock uint64) {
 				description = utils.GetIpfs(ipfsId)
 			}
 
+			// Decode calldata
+			calldata := "0x" + hex.EncodeToString(v.Script)
+
 			votes = append(votes, interfaces.Vote{
 				Id:              event.VoteId,
 				Open:            v.Open,
@@ -126,17 +131,20 @@ func FetchVotes(client *ethclient.Client, currentBlock uint64) {
 				Yea:             v.Yea,
 				Nay:             v.Nay,
 				VotingPower:     v.VotingPower,
-				Script:          "0x" + hex.EncodeToString(v.Script),
+				Script:          calldata,
 				VoteType:        voteType,
 				Voter:           vLog.Address,
 				IpfsId:          ipfsId,
 				Description:     description,
 				Creator:         event.Creator,
+				Voters:          make([]interfaces.Voter, 0),
 			})
 		} else if strings.EqualFold(vLog.Topics[0].Hex(), VOTE_EXECUTED_TOPIC.Hex()) || strings.EqualFold(vLog.Topics[0].Hex(), CAST_VOTE_TOPIC.Hex()) {
 
 			// Get vote id according to event
 			voteId := big.NewInt(0)
+			var newVoter interfaces.Voter
+
 			if strings.EqualFold(vLog.Topics[0].Hex(), VOTE_EXECUTED_TOPIC.Hex()) {
 				event, err := voterContract.ParseExecuteVote(vLog)
 				if err != nil {
@@ -151,6 +159,10 @@ func FetchVotes(client *ethclient.Client, currentBlock uint64) {
 					continue
 				}
 				voteId = event.VoteId
+
+				newVoter.Stake = utils.Quo(event.Stake, 18)
+				newVoter.Supports = event.Supports
+				newVoter.Voter = event.Voter
 			}
 
 			for i := 0; i < len(votes); i++ {
@@ -166,6 +178,10 @@ func FetchVotes(client *ethclient.Client, currentBlock uint64) {
 					votes[i].Open = v.Open
 					votes[i].Nay = v.Nay
 					votes[i].Yea = v.Yea
+
+					if !utils.IsNullAddress(newVoter.Voter) {
+						votes[i].Voters = append(votes[i].Voters, newVoter)
+					}
 
 					break
 				}

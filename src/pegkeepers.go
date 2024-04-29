@@ -192,7 +192,7 @@ func getPegKeeperAddresses(client *ethclient.Client) ([]common.Address, error) {
 				return nil, err
 			}
 
-			if strings.EqualFold(pegKeeperAddress.Hex(), utils.NULL_ADDRESS.Hex()) {
+			if utils.IsNullAddress(pegKeeperAddress) {
 				break
 			}
 

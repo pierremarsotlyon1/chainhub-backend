@@ -24,4 +24,11 @@ type Vote struct {
 	Description     string         `json:"description"`
 	IpfsId          string         `json:"ipfsId"`
 	Creator         common.Address `json:"creator"`
+	Voters          []Voter        `json:"voters"`
+}
+
+type Voter struct {
+	Voter    common.Address `json:"voter"`
+	Supports bool           `json:"supports"`
+	Stake    float64        `json:"stake"`
 }
