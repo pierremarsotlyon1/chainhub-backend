@@ -49,6 +49,9 @@ var VOTEMARKET_ADDRESSES_V2 = []common.Address{
 var QUEST_ADDRESSES = []common.Address{
 	common.HexToAddress("0x3682518b529e4404fb05250F9ad590C3218E5F9f"),
 	common.HexToAddress("0xce6dc32252d85e2e955Bfd3b85660917F040a933"),
+	common.HexToAddress("0x8EdcFE9Bc7d2a735117B94C16456D8303777abbb"),
+	common.HexToAddress("0x358549D4Cb7f97f389812B86673a6cf8c1FF59D2"),
+	common.HexToAddress("0x999881aA210B637ffF7d22c8566319444B38695B"),
 }
 
 var YBRIBE_ADDRESSES = []common.Address{
@@ -602,6 +605,7 @@ func generateDaysData(allClaimed []interfaces.BountyClaimed, start uint64, inter
 
 	current := start
 	currentTotalBountyDollarAmount := 0.0
+	breakdown := make([]interfaces.StatsClaimBreakdown, 0)
 
 	for _, claimed := range allClaimed {
 
@@ -614,7 +618,8 @@ func generateDaysData(allClaimed []interfaces.BountyClaimed, start uint64, inter
 		}
 
 		statsClaim.TotalClaimed += bountyDollarAmount
-		if isVlCVX(claimed) {
+		vlCVX := isVlCVX(claimed)
+		if vlCVX {
 			statsClaim.VlCVXTotalClaimed += bountyDollarAmount
 		} else {
 			statsClaim.VeCRVTotalClaimed += bountyDollarAmount
@@ -628,6 +633,26 @@ func generateDaysData(allClaimed []interfaces.BountyClaimed, start uint64, inter
 
 			current += interval
 		}
+
+		if !vlCVX {
+			name := getNameBreakdown(claimed.Contract)
+
+			found := false
+			for i := 0; i < len(breakdown); i++ {
+				if strings.EqualFold(breakdown[i].Name, name) {
+					breakdown[i].ClaimedUSD += bountyDollarAmount
+					found = true
+					break
+				}
+			}
+
+			if !found {
+				breakdown = append(breakdown, interfaces.StatsClaimBreakdown{
+					Name:       name,
+					ClaimedUSD: bountyDollarAmount,
+				})
+			}
+		}
 	}
 
 	if currentTotalBountyDollarAmount > 0 {
@@ -637,7 +662,49 @@ func generateDaysData(allClaimed []interfaces.BountyClaimed, start uint64, inter
 		})
 	}
 
+	statsClaim.VeStatsClaimBreakdown = breakdown
+
 	return statsClaim
+}
+
+func getNameBreakdown(claimedContract common.Address) string {
+	for _, contract := range VOTIUM_VE_CRV_ADDRESSES {
+		if strings.EqualFold(claimedContract.Hex(), contract.Hex()) {
+			return "Votium"
+		}
+	}
+
+	for _, contract := range VOTEMARKET_ADDRESSES_V1 {
+		if strings.EqualFold(claimedContract.Hex(), contract.Hex()) {
+			return "Votemarket"
+		}
+	}
+
+	for _, contract := range VOTEMARKET_ADDRESSES_V2 {
+		if strings.EqualFold(claimedContract.Hex(), contract.Hex()) {
+			return "Votemarket"
+		}
+	}
+
+	for _, contract := range QUEST_ADDRESSES {
+		if strings.EqualFold(claimedContract.Hex(), contract.Hex()) {
+			return "Quest"
+		}
+	}
+
+	for _, contract := range YBRIBE_ADDRESSES {
+		if strings.EqualFold(claimedContract.Hex(), contract.Hex()) {
+			return "YBribe"
+		}
+	}
+
+	for _, contract := range QUEST_ADDRESSES {
+		if strings.EqualFold(claimedContract.Hex(), contract.Hex()) {
+			return "bribe.crv.finance"
+		}
+	}
+
+	return ""
 }
 
 func isVlCVX(bounty interfaces.BountyClaimed) bool {
