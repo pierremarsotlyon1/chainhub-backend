@@ -10,6 +10,7 @@ import (
 	"main/contracts/erc20"
 	"main/interfaces"
 	"main/utils"
+	"math"
 	"math/big"
 	"os"
 	"strings"
@@ -22,13 +23,13 @@ import (
 const GAUGES_PATH = "./data/gauges.json"
 const GAUGES_CONFIG_PATH = "./data/configs/gauges-config.json"
 
-func FetchGaugeWeights() {
+func FetchGaugeWeights(alchemyMainnetRpc string) {
 
 	fmt.Println("fetch gauges weights")
 
 	gaugesConfig := utils.ReadConfig(GAUGES_CONFIG_PATH)
 
-	mainnetRpcUrl := "https://eth.public-rpc.com"
+	mainnetRpcUrl := alchemyMainnetRpc
 
 	client, err := ethclient.Dial(mainnetRpcUrl)
 	if err != nil {
@@ -95,7 +96,7 @@ func FetchGaugeWeights() {
 			if err != nil {
 				virtualPrice, err = poolContract.GetVirtualPrice(nil)
 				if err != nil {
-					fmt.Println("error virtual price", poolAddress.Hex())
+					fmt.Println("error virtual price", poolAddress.Hex(), err)
 					continue
 				}
 			}
@@ -178,6 +179,15 @@ func FetchGaugeWeights() {
 			}
 
 			lpPrice := totalDollar / lpTotalSupplyF
+			if math.IsNaN(lpPrice) {
+				lpPrice = 0
+			}
+
+			gaugeLpBalanceBN, err := lpContract.BalanceOf(nil, gaugeAddress)
+			if err != nil {
+				fmt.Println("Error when fetch LP balance in gauge ", gaugeAddress.Hex())
+				continue
+			}
 
 			gaugeContract, err := curveGauge.NewCurveGauge(gaugeAddress, client)
 			if err != nil {
@@ -212,6 +222,7 @@ func FetchGaugeWeights() {
 			gauges[i].NextMinApr = (crvPrice * crvRateF * nextGaugeWeightF * 12614400) / (workingSupplyF * lpPrice * virtualPriceF) * 100
 			gauges[i].NextMaxApr = (crvPrice * crvRateF * nextGaugeWeightF * 31536000) / (workingSupplyF * lpPrice * virtualPriceF) * 100
 			gauges[i].PendingFees = totalFees
+			gauges[i].AmountStakedUSD = utils.Quo(gaugeLpBalanceBN, 18) * lpPrice
 
 			if utils.IsInfinite(gauges[i].CurrentMinApr) {
 				gauges[i].CurrentMinApr = 0
@@ -234,6 +245,17 @@ func FetchGaugeWeights() {
 			if len(gauge.GaugeFutureCrvApy) == 2 {
 				gauges[i].NextMinApr = gauge.GaugeFutureCrvApy[0]
 				gauges[i].NextMaxApr = gauge.GaugeFutureCrvApy[1]
+			}
+
+			if common.IsHexAddress(gauges[i].Gauge) && common.IsHexAddress(gauges[i].LendingVaultAddress) {
+				lendingVaultContract, err := erc20.NewErc20(common.HexToAddress(gauges[i].LendingVaultAddress), client)
+				if err == nil {
+					gaugeLpBalanceBN, err := lendingVaultContract.BalanceOf(nil, common.HexToAddress(gauges[i].Gauge))
+					if err == nil {
+						lpPrice := gauges[i].LpTokenPrice
+						gauges[i].AmountStakedUSD = utils.Quo(gaugeLpBalanceBN, 18) * lpPrice
+					}
+				}
 			}
 		}
 	}

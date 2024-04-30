@@ -60,7 +60,7 @@ func main() {
 	case "votes":
 		src.FetchVotes(client, lastestBlock.NumberU64())
 	case "gauges":
-		src.FetchGaugeWeights()
+		src.FetchGaugeWeights(ALCHEMY_RPC_URL)
 	case "crvusd":
 		src.CrvUSD(client, lastestBlock.NumberU64())
 	case "pegkeepers":
