@@ -698,7 +698,7 @@ func getNameBreakdown(claimedContract common.Address) string {
 		}
 	}
 
-	for _, contract := range QUEST_ADDRESSES {
+	for _, contract := range BRIBE_CRV_FINANCE_ADDRESSES {
 		if strings.EqualFold(claimedContract.Hex(), contract.Hex()) {
 			return "bribe.crv.finance"
 		}
