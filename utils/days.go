@@ -34,3 +34,11 @@ func DaySinceEpoch(timestamp int64) int {
 
 	return days
 }
+
+func GetStartOfMonth(timestamp int64) int64 {
+	t := time.Unix(timestamp, 0)
+
+	startOfMonth := time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, t.Location())
+
+	return startOfMonth.Unix()
+}
