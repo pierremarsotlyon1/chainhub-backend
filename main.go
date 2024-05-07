@@ -67,5 +67,7 @@ func main() {
 		src.FetchPegKeepers(client, lastestBlock.NumberU64(), lastestBlock.Time())
 	case "pendingPoolFees":
 		src.PendingPoolFees(client, lastestBlock.NumberU64(), lastestBlock.Time())
+	case "inflation":
+		src.Inflation(client, lastestBlock.NumberU64(), lastestBlock.Time())
 	}
 }
