@@ -41,10 +41,11 @@ func Inflation(client *ethclient.Client, currentBlockf uint64, currentBlockTImes
 	amountCRV := rate * float64(utils.DAY_TO_SEC)
 	amountUSD := amountCRV * utils.GetHistoricalPriceTokenPrice(utils.CRV, "ethereum", uint64(startOfDay))
 
+	lastInflation := inflationData.Inflation[len(inflationData.Inflation)-1]
 	inflationData.Inflation = append(inflationData.Inflation, interfaces.Inflation{
 		Timestamp: startOfDay,
-		AmountCRV: amountCRV,
-		AmoutUSD:  amountUSD,
+		AmountCRV: (lastInflation.AmountCRV + amountCRV),
+		AmoutUSD:  (lastInflation.AmoutUSD + amountUSD),
 	})
 
 	writeInflation(inflationData)
