@@ -42,3 +42,11 @@ func GetStartOfMonth(timestamp int64) int64 {
 
 	return startOfMonth.Unix()
 }
+
+func GetStartOfDay(timestamp uint64) int64 {
+	t := time.Unix(int64(timestamp), 0)
+
+	startOfDay := t.Truncate(24 * time.Hour)
+
+	return startOfDay.Unix()
+}

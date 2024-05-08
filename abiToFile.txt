@@ -24,3 +24,7 @@ abigen --abi=./abis/PegKeeper.json --pkg=pegKeeper --out=PegKeeper.go
 abigen --abi=./abis/PegKeeperPool.json --pkg=pegKeeperPool --out=PegKeeperPool.go
 abigen --abi=./abis/PoolOwnerPendingFees.json --pkg=poolOwnerPendingFees --out=PoolOwnerPendingFees.go
 abigen --abi=./abis/Vesting.json --pkg=vesting --out=Vesting.go
+
+abigen --abi=./abis/LlamalendFactory.json --pkg=llamalendFactory --out=LlamalendFactory.go
+abigen --abi=./abis/LlamalendController.json --pkg=llamalendController --out=LlamalendController.go
+abigen --abi=./abis/LlamalendVault.json --pkg=llamalendVault --out=LlamalendVault.go

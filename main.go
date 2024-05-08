@@ -69,5 +69,7 @@ func main() {
 		src.PendingPoolFees(client, lastestBlock.NumberU64(), lastestBlock.Time())
 	case "inflation":
 		src.Inflation(client, lastestBlock.NumberU64(), lastestBlock.Time())
+	case "llamalend":
+		src.Llamalend()
 	}
 }
