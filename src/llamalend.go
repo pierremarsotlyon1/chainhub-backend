@@ -35,6 +35,7 @@ var LLAMALEND_FACTORIES = []interfaces.LlamalendConfig{
 		TimestampDeploy: 1710294146,
 		BlockDeploy:     19422660,
 		RpcUrl:          "https://eth-mainnet.g.alchemy.com/v2/" + utils.GoDotEnvVariable("ALCHEMY_APIKEY_2"),
+		ConfigPath:      LLAMALEND_CONFIGS_MAINNET,
 	},
 	{
 		FactoryAddress:  common.HexToAddress("0xcaEC110C784c9DF37240a8Ce096D352A75922DeA"),
@@ -43,6 +44,7 @@ var LLAMALEND_FACTORIES = []interfaces.LlamalendConfig{
 		TimestampDeploy: 1711266146,
 		BlockDeploy:     193652535,
 		RpcUrl:          "https://arb-mainnet.g.alchemy.com/v2/" + utils.GoDotEnvVariable("ALCHEMY_APIKEY_2"),
+		ConfigPath:      LLAMALEND_CONFIGS_ARB,
 	},
 }
 
@@ -51,9 +53,6 @@ var tokenSymbol = make(map[common.Address]string)
 var tokenDecimals = make(map[common.Address]uint8)
 
 func Llamalend() {
-
-	configsMainnet := utils.ReadConfig(LLAMALEND_CONFIGS_MAINNET)
-	configsArb := utils.ReadConfig(LLAMALEND_CONFIGS_ARB)
 
 	curvePools, err := utils.GetAllCurvePools()
 	if err != nil {
@@ -72,6 +71,8 @@ func Llamalend() {
 		if err != nil {
 			log.Fatal(err)
 		}
+
+		config := utils.ReadConfig(factory.ConfigPath)
 
 		opts := new(bind.CallOpts)
 		opts.BlockNumber = header.Number
@@ -112,12 +113,7 @@ func Llamalend() {
 		for _, market := range currentMarkets {
 			_, exists := controllersMap[market.ControllerAddress]
 
-			blockFrom := configsMainnet.LastBlock
-
-			// Check arb
-			if strings.EqualFold(factory.FactoryAddress.Hex(), "0xcaEC110C784c9DF37240a8Ce096D352A75922DeA") {
-				blockFrom = configsArb.LastBlock
-			}
+			blockFrom := config.LastBlock
 
 			if !exists {
 				liquidations := fetchHardLiquidation(client, market.ControllerAddress, int64(blockFrom), header.Number.Int64())
@@ -136,14 +132,7 @@ func Llamalend() {
 			}
 		}
 
-		// Set configs
-		if strings.EqualFold(factory.FactoryAddress.Hex(), "0xeA6876DDE9e3467564acBeE1Ed5bac88783205E0") {
-			// Mainnet
-			utils.WriteConfig(configsMainnet, header.Number.Uint64(), LLAMALEND_CONFIGS_MAINNET)
-		} else if strings.EqualFold(factory.FactoryAddress.Hex(), "0xcaEC110C784c9DF37240a8Ce096D352A75922DeA") {
-			// Arb
-			utils.WriteConfig(configsArb, header.Number.Uint64(), LLAMALEND_CONFIGS_ARB)
-		}
+		utils.WriteConfig(config, header.Number.Uint64(), factory.ConfigPath)
 	}
 
 	writeMarkets(currentMarkets)
