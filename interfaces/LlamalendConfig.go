@@ -9,4 +9,5 @@ type LlamalendConfig struct {
 	TimestampDeploy uint64
 	BlockDeploy     uint64
 	RpcUrl          string
+	ConfigPath      string
 }
