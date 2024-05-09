@@ -14,6 +14,7 @@ import (
 	"math/big"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -60,6 +61,7 @@ func Llamalend() {
 	}
 
 	currentMarkets := readMarkets()
+	controllersMapHardLiq := make(map[common.Address]bool)
 
 	for _, factory := range LLAMALEND_FACTORIES {
 		client, err := ethclient.Dial(factory.RpcUrl)
@@ -109,9 +111,8 @@ func Llamalend() {
 			}
 		}
 
-		controllersMap := make(map[common.Address]bool)
 		for _, market := range currentMarkets {
-			_, exists := controllersMap[market.ControllerAddress]
+			_, exists := controllersMapHardLiq[market.ControllerAddress]
 
 			blockFrom := config.LastBlock
 
@@ -128,8 +129,9 @@ func Llamalend() {
 					}
 				}
 
-				fmt.Println("fetched HardLiquidation for ", market.ControllerAddress)
-				controllersMap[market.ControllerAddress] = true
+				// For Alchemy rate limite
+				time.Sleep(2 * time.Second)
+				controllersMapHardLiq[market.ControllerAddress] = true
 			}
 		}
 
