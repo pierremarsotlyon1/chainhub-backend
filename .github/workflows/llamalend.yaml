@@ -3,7 +3,7 @@ run-name: ${{ github.actor }} 🚀
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */1 * * *'
+    - cron: '*/10 * * * *'
 
 env:
   ALCHEMY_APIKEY: ${{ secrets.ALCHEMY_APIKEY }}
