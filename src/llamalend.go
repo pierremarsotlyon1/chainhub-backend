@@ -126,8 +126,9 @@ func Llamalend() {
 							break
 						}
 					}
-
 				}
+
+				fmt.Println("fetched HardLiquidation for ", market.ControllerAddress)
 				controllersMap[market.ControllerAddress] = true
 			}
 		}
