@@ -223,6 +223,10 @@ func FetchGaugeWeights(alchemyMainnetRpc string) {
 			gauges[i].NextMaxApr = (crvPrice * crvRateF * nextGaugeWeightF * 31536000) / (workingSupplyF * lpPrice * virtualPriceF) * 100
 			gauges[i].PendingFees = totalFees
 			gauges[i].AmountStakedUSD = utils.Quo(gaugeLpBalanceBN, 18) * lpPrice
+			gauges[i].LpTokenPrice = lpPrice
+			gauges[i].WorkingSupply = workingSupplyF
+			gauges[i].VirtualPrice = virtualPriceF
+			gauges[i].CanCalculateInTheUI = true
 
 			if utils.IsInfinite(gauges[i].CurrentMinApr) {
 				gauges[i].CurrentMinApr = 0
@@ -257,6 +261,8 @@ func FetchGaugeWeights(alchemyMainnetRpc string) {
 					}
 				}
 			}
+
+			gauges[i].CanCalculateInTheUI = false
 		}
 	}
 
