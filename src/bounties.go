@@ -145,7 +145,6 @@ func computeBountiesStats(allClaimed []interfaces.BountyClaimed) {
 	sort.Slice(allClaimedWithPrice, func(i, j int) bool { return allClaimedWithPrice[i].Timestamp < allClaimedWithPrice[j].Timestamp })
 
 	// Remove future bounties
-	now := uint64(time.Now().Unix())
 	var allClaimedFiltered []interfaces.BountyClaimed
 	for _, b := range allClaimedWithPrice {
 		if b.Timestamp < now {
