@@ -113,9 +113,15 @@ func computeBountiesStats(allClaimed []interfaces.BountyClaimed) {
 	totalVlCVXBountiesUSD := 0.0
 
 	allClaimedWithPrice := make([]interfaces.BountyClaimed, 0)
-	for _, bounty := range allClaimed {
+	for i, bounty := range allClaimed {
 
 		amount, _ := new(big.Float).Quo(big.NewFloat(0).SetInt(bounty.Amount), big.NewFloat(0).SetInt(math.BigPow(10, int64(bounty.TokenDecimals)))).Float64()
+
+		if bounty.Price == 0 {
+			allClaimed[i].Price = utils.GetHistoricalPriceTokenPrice(bounty.TokenReward, "ethereum", uint64(time.Now().Unix()))
+			bounty.Price = allClaimed[i].Price
+		}
+
 		bountyAmount := (amount * bounty.Price)
 
 		totalBountiesUSD += bountyAmount
