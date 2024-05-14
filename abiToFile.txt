@@ -28,3 +28,5 @@ abigen --abi=./abis/Vesting.json --pkg=vesting --out=Vesting.go
 abigen --abi=./abis/LlamalendFactory.json --pkg=llamalendFactory --out=LlamalendFactory.go
 abigen --abi=./abis/LlamalendController.json --pkg=llamalendController --out=LlamalendController.go
 abigen --abi=./abis/LlamalendVault.json --pkg=llamalendVault --out=LlamalendVault.go
+
+abigen --abi=./abis/CurvePoolFactoryV2.json --pkg=curvePoolFactoryV2 --out=CurvePoolFactoryV2.go

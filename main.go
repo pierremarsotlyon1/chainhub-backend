@@ -71,5 +71,7 @@ func main() {
 		src.Inflation(client, lastestBlock.NumberU64(), lastestBlock.Time())
 	case "llamalend":
 		src.Llamalend()
+	case "peg":
+		src.Pegs(client)
 	}
 }

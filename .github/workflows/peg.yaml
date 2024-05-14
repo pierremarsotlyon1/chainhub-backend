@@ -1,0 +1,41 @@
+name: Generate wrapper pegs
+run-name: ${{ github.actor }} 🚀
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 */1 * * *'
+
+env:
+  ALCHEMY_APIKEY: ${{ secrets.ALCHEMY_APIKEY }}
+  ALCHEMY_APIKEY_2: ${{ secrets.ALCHEMY_APIKEY_2 }}
+  INFURA_APIKEY: ${{ secrets.INFURA_APIKEY }}
+
+jobs:
+  build: # make sure build/ci work properly
+    runs-on: ubuntu-latest
+    permissions:
+      # Give the default GITHUB_TOKEN write permission to commit and push the
+      # added or changed files to the repository.
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v2
+        with:
+          go-version: '1.22.1'
+
+      - run: go run ./main.go peg
+
+      - name: Update from main
+        run: |
+          git config --local user.email "actions@github.com"
+          git config --local user.name "Automation"
+          git checkout main
+          git pull
+          git checkout ${{github.ref_name}}
+          git pull
+        shell: bash
+        if: always()
+
+      - name: Commit and Push
+        uses: stefanzweifel/git-auto-commit-action@v5
+
