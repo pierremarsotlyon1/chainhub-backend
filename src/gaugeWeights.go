@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"main/contracts/crv"
+	"main/contracts/curveGC"
 	"main/contracts/curveGauge"
 	"main/contracts/curvePool"
 	"main/contracts/erc20"
@@ -16,11 +17,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
 const GAUGES_PATH = "./data/gauges.json"
+const GAUGES_TOP_WINNER_LOSER_PATH = "./data/gauges/top-winner-loser.json"
 const GAUGES_CONFIG_PATH = "./data/configs/gauges-config.json"
 
 func FetchGaugeWeights(alchemyMainnetRpc string) {
@@ -267,8 +270,154 @@ func FetchGaugeWeights(alchemyMainnetRpc string) {
 	}
 
 	writeGauges(gauges)
-
+	topWinnersLosers(client, gauges)
 	utils.WriteConfig(gaugesConfig, 0, GAUGES_CONFIG_PATH)
+}
+
+func topWinnersLosers(client *ethclient.Client, gauges []interfaces.Gauge) {
+	gcContract, err := curveGC.NewCurveGC(utils.CURVE_GC_ADDRESS, client)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	totalWeightBN, err := gcContract.GetTotalWeight(nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	totalWeight := utils.Quo(totalWeightBN, 36)
+
+	now := uint64(time.Now().Unix())
+	currentPeriod := uint64(now/utils.WEEK_TO_SEC) * utils.WEEK_TO_SEC
+	nextPeriod := currentPeriod + utils.WEEK_TO_SEC
+
+	allGaugesTopLoser := readMapGaugesTopWinerLoser()
+
+	_, exists := allGaugesTopLoser[currentPeriod]
+	if !exists {
+		allGaugesTopLoser[currentPeriod] = make([]interfaces.GaugeTopLoser, 0)
+	}
+
+	_, exists = allGaugesTopLoser[nextPeriod]
+	if !exists {
+		allGaugesTopLoser[nextPeriod] = make([]interfaces.GaugeTopLoser, 0)
+	}
+
+	for _, gauge := range gauges {
+		// Previous period
+		gw, success := big.NewInt(0).SetString(gauge.GaugeController.GaugeRelativeWeight, 10)
+		if !success {
+			fmt.Println("Error when convert gauge weight to int")
+			continue
+		}
+		relativeWeight := utils.Quo(gw, uint64(18))
+		weight := relativeWeight * totalWeight
+
+		found := false
+		for i := 0; i < len(allGaugesTopLoser[currentPeriod]); i++ {
+			if strings.EqualFold(allGaugesTopLoser[currentPeriod][i].Gauge.Hex(), gauge.Gauge) {
+
+				allGaugesTopLoser[currentPeriod][i].CurrentWeight = weight
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			allGaugesTopLoser[currentPeriod] = append(allGaugesTopLoser[currentPeriod], interfaces.GaugeTopLoser{
+				Gauge:         common.HexToAddress(gauge.Gauge),
+				CurrentWeight: weight,
+			})
+		}
+
+		// Next period
+		gw, success = big.NewInt(0).SetString(gauge.GaugeController.GaugeFutureRelativeWeight, 10)
+		if !success {
+			fmt.Println("Error when convert gauge weight to int")
+			continue
+		}
+		relativeWeight = utils.Quo(gw, uint64(18))
+		weight = relativeWeight * totalWeight
+
+		found = false
+		for i := 0; i < len(allGaugesTopLoser[nextPeriod]); i++ {
+			if strings.EqualFold(allGaugesTopLoser[nextPeriod][i].Gauge.Hex(), gauge.Gauge) {
+
+				allGaugesTopLoser[nextPeriod][i].CurrentWeight = weight
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			allGaugesTopLoser[nextPeriod] = append(allGaugesTopLoser[nextPeriod], interfaces.GaugeTopLoser{
+				Gauge:         common.HexToAddress(gauge.Gauge),
+				CurrentWeight: weight,
+			})
+		}
+	}
+
+	writeGaugesTopWinerLoser(allGaugesTopLoser)
+}
+
+func GetHistoricalTopWinnersLosers(client *ethclient.Client, start uint64) {
+	gauges := utils.GetAllGauges()
+
+	now := uint64(time.Now().Unix())
+	currentPeriod := uint64(now/utils.WEEK_TO_SEC) * utils.WEEK_TO_SEC
+	nextCurrentPeriod := currentPeriod + utils.WEEK_TO_SEC
+
+	// 1st january 2024 1704063607
+	start = uint64(start/utils.WEEK_TO_SEC) * utils.WEEK_TO_SEC
+
+	gcContract, err := curveGC.NewCurveGC(utils.CURVE_GC_ADDRESS, client)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	allGaugesTopLoser := readMapGaugesTopWinerLoser()
+
+	for {
+		if start >= nextCurrentPeriod {
+			break
+		}
+
+		blockNumber := utils.GetBlockNumberByTimestamp("ethereum", start) + 100
+		currentOpts := new(bind.CallOpts)
+		currentOpts.BlockNumber = big.NewInt(int64(blockNumber))
+
+		totalWeightBN, err := gcContract.GetTotalWeight(currentOpts)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		totalWeight := utils.Quo(totalWeightBN, 36)
+
+		gaugesTopLoser := make([]interfaces.GaugeTopLoser, 0)
+		for _, gauge := range gauges {
+
+			relativeWeightBN, err := gcContract.GaugeRelativeWeight(currentOpts, common.HexToAddress(gauge.Gauge))
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			relativeWeight := utils.Quo(relativeWeightBN, 18)
+
+			weight := relativeWeight * totalWeight
+
+			gaugesTopLoser = append(gaugesTopLoser, interfaces.GaugeTopLoser{
+				Gauge:         common.HexToAddress(gauge.Gauge),
+				CurrentWeight: weight,
+			})
+		}
+
+		currentPeriod := uint64(start/utils.WEEK_TO_SEC) * utils.WEEK_TO_SEC
+		allGaugesTopLoser[currentPeriod] = gaugesTopLoser
+
+		start = start + utils.WEEK_TO_SEC
+	}
+
+	writeGaugesTopWinerLoser(allGaugesTopLoser)
 }
 
 func writeGauges(gauges []interfaces.Gauge) {
@@ -280,4 +429,33 @@ func writeGauges(gauges []interfaces.Gauge) {
 	if err := os.WriteFile(GAUGES_PATH, file, 0644); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func writeGaugesTopWinerLoser(gauges map[uint64][]interfaces.GaugeTopLoser) {
+	file, err := json.Marshal(gauges)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if err := os.WriteFile(GAUGES_TOP_WINNER_LOSER_PATH, file, 0644); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func readMapGaugesTopWinerLoser() map[uint64][]interfaces.GaugeTopLoser {
+	if !utils.FileExists(GAUGES_TOP_WINNER_LOSER_PATH) {
+		return make(map[uint64][]interfaces.GaugeTopLoser)
+	}
+
+	file, err := os.ReadFile(GAUGES_TOP_WINNER_LOSER_PATH)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	gauges := make(map[uint64][]interfaces.GaugeTopLoser)
+	if err := json.Unmarshal([]byte(file), &gauges); err != nil {
+		log.Fatal(err)
+	}
+
+	return gauges
 }

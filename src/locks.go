@@ -49,7 +49,7 @@ func fetchVeCRVLocks(client *ethclient.Client, currentBlock uint64, config inter
 	query := ethereum.FilterQuery{
 		FromBlock: big.NewInt(int64(from)),
 		ToBlock:   big.NewInt(int64(currentBlock)),
-		Addresses: []common.Address{utils.CURVE_GC_ADDRESS},
+		Addresses: []common.Address{utils.CURVE_ESCROW_ADDRESS},
 		Topics:    [][]common.Hash{{common.HexToHash("0x4566dfc29f6f11d13a418c26a02bef7c28bae749d4de47e4e6a7cddea6730d59")}},
 	}
 
