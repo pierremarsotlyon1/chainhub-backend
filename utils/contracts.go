@@ -3,11 +3,12 @@ package utils
 import "github.com/ethereum/go-ethereum/common"
 
 var CRV_VESTING_CONTRACT = common.HexToAddress("0xd2D43555134dC575BF7279F4bA18809645dB0F1D")
-var CURVE_GC_ADDRESS = common.HexToAddress("0x5f3b5DfEb7B28CDbD7FAba78963EE202a494e2A2")
+var CURVE_ESCROW_ADDRESS = common.HexToAddress("0x5f3b5DfEb7B28CDbD7FAba78963EE202a494e2A2")
 var CRV = common.HexToAddress("0xD533a949740bb3306d119CC777fa900bA034cd52")
 var ETH_DEFAULT = common.HexToAddress("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE")
 var NULL_ADDRESS = common.HexToAddress("0x0000000000000000000000000000000000000000")
 var CRVUSD_ADDRESS = common.HexToAddress("0xf939E0A03FB07F59A73314E73794Be0E57ac1b4E")
+var CURVE_GC_ADDRESS = common.HexToAddress("0x2F50D538606Fa9EDD2B11E2446BEb18C9D5846bB")
 
 var POOL_OWNER_PENDING_FEES_OWNER = common.HexToAddress("0x8c73d39b2da2dd1a10cc16502bc7c8d768ec74c9")
 
