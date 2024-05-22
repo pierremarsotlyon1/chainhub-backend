@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"main/contracts/curveGC"
+	"main/contracts/escrow"
 	"main/interfaces"
 	"main/utils"
 	"math/big"
@@ -60,7 +60,7 @@ func fetchVeCRVLocks(client *ethclient.Client, currentBlock uint64, config inter
 
 	locks := make([]interfaces.Lock, 0)
 
-	abi, err := curveGC.CurveGCMetaData.GetAbi()
+	abi, err := escrow.EscrowMetaData.GetAbi()
 	if err != nil {
 		panic(err)
 	}
@@ -77,13 +77,13 @@ func fetchVeCRVLocks(client *ethclient.Client, currentBlock uint64, config inter
 			continue
 		}
 
-		block, err := client.BlockByNumber(context.Background(), big.NewInt(int64(vLog.BlockNumber)))
+		block, err := client.HeaderByNumber(context.Background(), big.NewInt(int64(vLog.BlockNumber)))
 		if err != nil {
 			fmt.Println(err)
 			continue
 		}
 
-		timestamp := block.Time()
+		timestamp := block.Time
 
 		locks = append(locks, interfaces.Lock{
 			Tx:        vLog.TxHash,
