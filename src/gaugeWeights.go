@@ -382,7 +382,7 @@ func GetHistoricalTopWinnersLosers(client *ethclient.Client, start uint64) {
 			break
 		}
 
-		blockNumber := utils.GetBlockNumberByTimestamp("ethereum", start) + 100
+		blockNumber := utils.GetBlockNumberByTimestamp("ethereum", start) + 1000
 		currentOpts := new(bind.CallOpts)
 		currentOpts.BlockNumber = big.NewInt(int64(blockNumber))
 
