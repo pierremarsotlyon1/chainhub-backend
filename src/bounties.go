@@ -52,6 +52,7 @@ var QUEST_ADDRESSES = []common.Address{
 	common.HexToAddress("0x8EdcFE9Bc7d2a735117B94C16456D8303777abbb"),
 	common.HexToAddress("0x358549D4Cb7f97f389812B86673a6cf8c1FF59D2"),
 	common.HexToAddress("0x999881aA210B637ffF7d22c8566319444B38695B"),
+	common.HexToAddress("0x1327C85CE6F3C83faBC4f5C294F57ac05bCb51eB"),
 }
 
 var YBRIBE_ADDRESSES = []common.Address{
