@@ -4,14 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"main/contracts/crv"
 	"main/contracts/vesting"
 	"main/interfaces"
 	"main/utils"
 	"math/big"
-	"net/http"
 	"os"
 	"sort"
 	"strconv"
@@ -77,23 +75,8 @@ func fetchDailyInflation(client *ethclient.Client) interfaces.InflationData {
 	return inflationData
 }
 
-func getWeeklyFees() ([]interfaces.WeeklyFeesTable, error) {
-	response, err := http.Get("https://api.curve.fi/api/getWeeklyFees")
-	if err != nil {
-		return nil, err
-	}
-
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	weeklyFees := new(interfaces.WeeklyFees)
-	if err := json.Unmarshal(body, weeklyFees); err != nil {
-		return nil, err
-	}
-
-	return weeklyFees.Data.WeeklyFeesTable, nil
+func getWeeklyFees() []interfaces.WeeklyFeesTable {
+	return readWeeklyFees()
 }
 
 func fetchVesting(client *ethclient.Client, currentBlock uint64) []interfaces.VestingClaim {
@@ -160,10 +143,7 @@ func fetchVesting(client *ethclient.Client, currentBlock uint64) []interfaces.Ve
 }
 
 func computeInflation(inflationData interfaces.InflationData, vestingClaims []interfaces.VestingClaim) {
-	weeklyFees, err := getWeeklyFees()
-	if err != nil {
-		log.Fatal(err)
-	}
+	weeklyFees := getWeeklyFees()
 
 	// Group by month bounties + weekly fees vs inflation
 	// Compute weekly fees
