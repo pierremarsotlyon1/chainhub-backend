@@ -195,10 +195,6 @@ func FetchVotes(client *ethclient.Client, currentBlock uint64) {
 		if len(votes[i].Description) == 0 {
 			votes[i].Description = utils.GetIpfs(votes[i].IpfsId)
 		}
-
-		if len(votes[i].Description) == 0 {
-			votes[i].Description = utils.GetIpfsFromCurveMonitor(votes[i].IpfsId, votes[i].Id)
-		}
 	}
 
 	writeVotes(votes)
