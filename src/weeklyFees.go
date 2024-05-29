@@ -136,6 +136,25 @@ func readWeeklyFeesTransfers() []interfaces.WeeklyFee {
 	return transfers
 }
 
+func readWeeklyFees() []interfaces.WeeklyFeesTable {
+
+	if !utils.FileExists(weeklyFeesPath) {
+		return make([]interfaces.WeeklyFeesTable, 0)
+	}
+
+	file, err := os.ReadFile(weeklyFeesPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	tables := make([]interfaces.WeeklyFeesTable, 0)
+	if err := json.Unmarshal([]byte(file), &tables); err != nil {
+		log.Fatal(err)
+	}
+
+	return tables
+}
+
 func writeWeeklyFeesTransfers(transfers []interfaces.WeeklyFee) {
 	file, err := json.Marshal(transfers)
 	if err != nil {
