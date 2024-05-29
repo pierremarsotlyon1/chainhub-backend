@@ -73,5 +73,7 @@ func main() {
 		src.Llamalend()
 	case "peg":
 		src.Pegs(client)
+	case "weeklyFees":
+		src.WeeklyFees(client, lastestBlock.NumberU64())
 	}
 }
