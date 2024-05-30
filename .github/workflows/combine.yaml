@@ -1,4 +1,4 @@
-name: Generate bounties data
+name: Generate combine data
 run-name: ${{ github.actor }} 🚀
 on:
   workflow_dispatch:
