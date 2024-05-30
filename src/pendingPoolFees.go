@@ -366,8 +366,8 @@ func getTokensWithBurners(client *ethclient.Client, pools []interfaces.CurvePool
 		}
 
 		lpAddress := common.HexToAddress(pool.LpTokenAddress)
-		_, exists = tokensWithBurners[chain][lpAddress]
-		if !exists {
+		haveBurner, exists := tokensWithBurners[chain][lpAddress]
+		if !exists || !haveBurner {
 			burnerAddress, err := poolOwnerContract.Burners(nil, lpAddress)
 			if err == nil {
 				tokensWithBurners[chain][lpAddress] = !utils.IsNullAddress(burnerAddress)
@@ -380,8 +380,8 @@ func getTokensWithBurners(client *ethclient.Client, pools []interfaces.CurvePool
 
 		for _, coin := range allCoins {
 			coinAddress := common.HexToAddress(coin.Address)
-			_, exists := tokensWithBurners[chain][coinAddress]
-			if exists {
+			haveBurner, exists := tokensWithBurners[chain][coinAddress]
+			if exists && haveBurner {
 				continue
 			}
 
