@@ -22,15 +22,17 @@ jobs:
       - uses: actions/setup-go@v2
         with:
           go-version: '1.22.1'
-
-      - run: go run ./main.go bounties
-      - run: go run ./main.go crvusd ALCHEMY_APIKEY_2
-      - run: go run ./main.go llamalend
-      - run: go run ./main.go locks
-      - run: go run ./main.go weeklyFees
-      - run: go run ./main.go pegkeepers ALCHEMY_APIKEY_2
-      - run: go run ./main.go peg
-      - run: go run ./main.go votes
+      
+      - name: Run all scripts
+        run: |
+          go run ./main.go bounties
+          go run ./main.go crvusd ALCHEMY_APIKEY_2
+          go run ./main.go llamalend
+          go run ./main.go locks
+          go run ./main.go weeklyFees
+          go run ./main.go pegkeepers ALCHEMY_APIKEY_2
+          go run ./main.go peg
+          go run ./main.go votes
 
       - name: Update from main
         run: |
