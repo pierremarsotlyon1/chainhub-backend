@@ -26,6 +26,8 @@ func GetPublicRpcUrl(chainName string) string {
 		return "https://rpc.frax.com"
 	case "bsc":
 		return "https://rpc.ankr.com/bsc"
+	case "x-layer":
+		return "https://rpc.xlayer.tech"
 	default:
 		return ""
 	}
