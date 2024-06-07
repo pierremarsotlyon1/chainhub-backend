@@ -63,23 +63,22 @@ func Llamalend() {
 	currentMarkets := readMarkets()
 	controllersMapHardLiq := make(map[common.Address]bool)
 
+	now := uint64(time.Now().Unix())
+
 	for _, factory := range LLAMALEND_FACTORIES {
 		client, err := ethclient.Dial(factory.RpcUrl)
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		header, err := client.HeaderByNumber(context.Background(), nil)
-		if err != nil {
-			log.Fatal(err)
-		}
+		blockNumber := utils.GetBlockNumberByTimestamp(factory.MarketName, now)
 
 		config := utils.ReadConfig(factory.ConfigPath)
 
 		opts := new(bind.CallOpts)
-		opts.BlockNumber = header.Number
+		opts.BlockNumber = big.NewInt(int64(blockNumber))
 
-		blockTimestamp := header.Time
+		blockTimestamp := now
 		dayTimestamp := utils.GetStartOfDay(uint64(blockTimestamp))
 
 		markets := fetchLlamalend(opts, factory, client, blockTimestamp, dayTimestamp, curvePools)
@@ -112,12 +111,18 @@ func Llamalend() {
 		}
 
 		for _, market := range currentMarkets {
+			if market.ChainId != factory.ChainId {
+				continue
+			}
 			_, exists := controllersMapHardLiq[market.ControllerAddress]
 
 			blockFrom := config.LastBlock
 
 			if !exists {
-				liquidations := fetchHardLiquidation(client, market.ControllerAddress, int64(blockFrom), header.Number.Int64())
+				from := int64(blockFrom)
+
+				liquidations := fetchHardLiquidation(client, now, market.ControllerAddress, from, int64(blockNumber))
+
 				for _, liquidation := range liquidations {
 					timestamp := utils.GetStartOfDay(liquidation.Timestamp)
 
@@ -135,7 +140,7 @@ func Llamalend() {
 			}
 		}
 
-		utils.WriteConfig(config, header.Number.Uint64(), factory.ConfigPath)
+		utils.WriteConfig(config, blockNumber, factory.ConfigPath)
 	}
 
 	writeMarkets(currentMarkets)
@@ -186,7 +191,7 @@ func LlamalendHistorical() {
 		for _, market := range factoryMarkets {
 			_, exists := controllersMap[market.ControllerAddress]
 			if !exists {
-				liquidations := fetchHardLiquidation(client, market.ControllerAddress, int64(factory.BlockDeploy), block.Number.Int64())
+				liquidations := fetchHardLiquidation(client, uint64(time.Now().Unix()), market.ControllerAddress, int64(factory.BlockDeploy), block.Number.Int64())
 				for _, liquidation := range liquidations {
 					timestamp := utils.GetStartOfDay(liquidation.Timestamp)
 
@@ -387,7 +392,7 @@ func fetchLlamalend(opts *bind.CallOpts, factory interfaces.LlamalendConfig, cli
 	return markets
 }
 
-func fetchHardLiquidation(client *ethclient.Client, controllerAddress common.Address, blockFrom int64, blockTo int64) []interfaces.LlamalendLiquidate {
+func fetchHardLiquidation(client *ethclient.Client, now uint64, controllerAddress common.Address, blockFrom int64, blockTo int64) []interfaces.LlamalendLiquidate {
 	query := ethereum.FilterQuery{
 		FromBlock: big.NewInt(blockFrom),
 		ToBlock:   big.NewInt(blockTo),
@@ -414,14 +419,8 @@ func fetchHardLiquidation(client *ethclient.Client, controllerAddress common.Add
 			continue
 		}
 
-		block, err := client.HeaderByNumber(context.Background(), big.NewInt(int64(vLog.BlockNumber)))
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-
 		llamalendLiquidates = append(llamalendLiquidates, interfaces.LlamalendLiquidate{
-			Timestamp: block.Time,
+			Timestamp: now,
 			User:      event.User,
 		})
 	}

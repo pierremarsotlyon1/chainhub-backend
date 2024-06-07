@@ -70,13 +70,13 @@ func fetchWeeklyFees(client *ethclient.Client, currentBlock uint64, config inter
 		}
 
 		if strings.EqualFold(event.To.Hex(), utils.FEES_DISTRIBUTOR_MAINNET.Hex()) {
-			header, err := client.HeaderByNumber(context.Background(), big.NewInt(int64(vLog.BlockNumber)))
+			header, err := client.BlockByNumber(context.Background(), big.NewInt(int64(vLog.BlockNumber)))
 			if err != nil {
 				continue
 			}
 
 			transfers = append(transfers, interfaces.WeeklyFee{
-				Ts:     header.Time,
+				Ts:     header.Time(),
 				Fees:   utils.Quo(event.Value, 18),
 				TxHash: vLog.TxHash,
 			})

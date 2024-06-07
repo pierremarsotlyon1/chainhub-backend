@@ -46,12 +46,12 @@ func Pegs(client *ethclient.Client) {
 
 	pegs := readDailyPegs()
 
-	head, err := client.HeaderByNumber(context.Background(), nil)
+	block, err := client.BlockByNumber(context.Background(), nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	blockTimestamp := head.Time
+	blockTimestamp := block.Time()
 	startDay := uint64(utils.GetStartOfDay(blockTimestamp))
 
 	for _, wrapper := range WRAPPERS {
@@ -62,7 +62,7 @@ func Pegs(client *ethclient.Client) {
 		}
 
 		opts := new(bind.CallOpts)
-		opts.BlockNumber = head.Number
+		opts.BlockNumber = block.Number()
 
 		pegBN, err := poolContract.GetDy(opts, big.NewInt(1), big.NewInt(0), utils.Mul(10000, 18))
 		if err != nil {

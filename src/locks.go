@@ -77,13 +77,13 @@ func fetchVeCRVLocks(client *ethclient.Client, currentBlock uint64, config inter
 			continue
 		}
 
-		block, err := client.HeaderByNumber(context.Background(), big.NewInt(int64(vLog.BlockNumber)))
+		block, err := client.BlockByNumber(context.Background(), big.NewInt(int64(vLog.BlockNumber)))
 		if err != nil {
 			fmt.Println(err)
 			continue
 		}
 
-		timestamp := block.Time
+		timestamp := block.Time()
 
 		locks = append(locks, interfaces.Lock{
 			Tx:        vLog.TxHash,
