@@ -7,7 +7,8 @@ import (
 )
 
 type Lock struct {
-	Tx        common.Hash `json:"tx"`
-	Timestamp uint64      `json:"timestamp"`
-	Value     *big.Int    `json:"value"`
+	Tx        common.Hash    `json:"tx"`
+	Timestamp uint64         `json:"timestamp"`
+	Value     *big.Int       `json:"value"`
+	User      common.Address `json:"user"`
 }
