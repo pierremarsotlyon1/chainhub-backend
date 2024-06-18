@@ -79,8 +79,6 @@ func fetchVeCRVLocks(client *ethclient.Client, currentBlock uint64, config inter
 			continue
 		}
 
-		user := receivedMap["provider"].(common.Address)
-
 		block, err := client.BlockByNumber(context.Background(), big.NewInt(int64(vLog.BlockNumber)))
 		if err != nil {
 			fmt.Println(err)
@@ -93,7 +91,7 @@ func fetchVeCRVLocks(client *ethclient.Client, currentBlock uint64, config inter
 			Tx:        vLog.TxHash,
 			Timestamp: timestamp,
 			Value:     value,
-			User:      user,
+			User:      common.HexToAddress(vLog.Topics[1].Hex()),
 		})
 	}
 
