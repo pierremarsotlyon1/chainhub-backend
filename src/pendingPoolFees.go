@@ -253,6 +253,11 @@ func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, allPools []inte
 	fmt.Println("Quotes to do : ", len(coinsToQuote))
 	totalFees := 0.0
 	for coin, balance := range coinsToQuote {
+		if balance.Cmp(big.NewInt(0)) == 0 {
+			// Empty balance
+			continue
+		}
+
 		quoteResp, err := quote(cowswapChain, coin, balance)
 		if err != nil {
 			fmt.Println(err)
