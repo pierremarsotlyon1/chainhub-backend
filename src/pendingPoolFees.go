@@ -6,7 +6,9 @@ import (
 	"crypto/ecdsa"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"main/contracts/curvePoolFactoryV2"
 	"main/contracts/erc20"
 	"main/contracts/poolOwnerPendingFees"
 	"main/interfaces"
@@ -39,13 +41,19 @@ const (
 )
 
 var (
-	CHAINS_APPROVED = []string{ETHEREUM_CHAIN, ARBITRUM_CHAIN, POLYGON_CHAIN, OPTIMISM_CHAIN, AVALANCHE_CHAIN, FANTOM_CHAIN}
-	NODE_TENDERLY   = []string{ETHEREUM_CHAIN, ARBITRUM_CHAIN, POLYGON_CHAIN, OPTIMISM_CHAIN}
-	FORK_CHAIN_ID   = map[string]string{
+	CHAINS_APPROVED       = []string{ETHEREUM_CHAIN, ARBITRUM_CHAIN, POLYGON_CHAIN, OPTIMISM_CHAIN, AVALANCHE_CHAIN, FANTOM_CHAIN}
+	COWSWAP_BURNER_CHAINS = []string{ETHEREUM_CHAIN}
+	NODE_TENDERLY         = []string{ETHEREUM_CHAIN, ARBITRUM_CHAIN, POLYGON_CHAIN, OPTIMISM_CHAIN}
+	FORK_CHAIN_ID         = map[string]string{
 		AVALANCHE_CHAIN: "43114",
 		FANTOM_CHAIN:    "250",
 	}
 )
+
+var COWSWAP_CHAINS = map[string]string{
+	ETHEREUM_CHAIN: "mainnet",
+	ARBITRUM_CHAIN: "arbitrum_one",
+}
 
 // Contract which receive fee tokens + burn + withdraw
 var POOL_OWNERS = map[string]common.Address{
@@ -101,6 +109,11 @@ var TARKET_TOKEN_DECIMALS = map[string]uint64{
 	FANTOM_CHAIN:    6,
 }
 
+// Fee collector per chain with cowswap burner
+var FEE_COLLECTOR_PER_CHAIN_COWSWAP_BURNER = map[string]common.Address{
+	ETHEREUM_CHAIN: utils.FEE_COLLECTOR_MAINNET,
+}
+
 func PendingPoolFees(client *ethclient.Client, currentBlockf uint64, currentBlockTImestamp uint64) {
 	currentPendingCrvFees := readPending3CRVFees()
 
@@ -113,103 +126,12 @@ func PendingPoolFees(client *ethclient.Client, currentBlockf uint64, currentBloc
 	earned := make(map[string]float64)
 
 	for _, chain := range CHAINS_APPROVED {
-
-		pools := make([]interfaces.CurvePool, 0)
-		for _, pool := range allPools {
-			if strings.EqualFold(chain, pool.BlockchainId) {
-				pools = append(pools, pool)
-			}
-		}
-
-		clientChain := client
-		if !strings.EqualFold(chain, ETHEREUM_CHAIN) {
-			rpcUrl := utils.GetPublicRpcUrl(chain)
-			if len(rpcUrl) == 0 {
-				continue
-			}
-
-			clientChain, err = ethclient.Dial(rpcUrl)
-			if err != nil {
-				fmt.Println("Error when creating rpc ", rpcUrl)
-				continue
-			}
-		}
-
-		// Generate calldatas for withdraw_many
-		poolsWithWithdrawAdminFee := getPoolsWithWithdrawAdminFee(clientChain, pools, chain)
-		// 0x3165fbc056036ad3bc38ddf39f1764220a0e562a
-		//poolsWithWithdrawAdminFee = removeRevert(clientChain, "withdraw_admin_fees", poolsWithWithdrawAdminFee, chain)
-		//chunkPoolsWithdrawAdminFees := utils.ChunkAddressSlice(poolsWithWithdrawAdminFee, NB_ADDRESSES_IN_FUNCTION)
-		calldatasWithdrawFees := getCalldatas("withdraw_admin_fees", poolsWithWithdrawAdminFee)
-
-		// Generate calldatas for burn_many
-		coinsWithBurnersSimpe := getTokensWithBurners(clientChain, pools, chain)
-		//coinsWithBurnersSimpe = removeRevert(clientChain, "burn", coinsWithBurnersSimpe, chain)
-
-		coinsWithBurnersSimpe = manageTokens(coinsWithBurnersSimpe, TARGET_TOKEN_BEFORE_SEND[chain], pools, chain)
-
-		//coinsWithBurners := utils.ChunkAddressSlice(coinsWithBurnersSimpe, NB_ADDRESSES_IN_FUNCTION)
-		calldatasBurnMany := getCalldatas("burn", coinsWithBurnersSimpe)
-
-		// Generate target token balance calldata
-		targetTokenBalanceRequest := getTargetTokenBalanceCallData(chain)
-
-		balance := big.NewInt(0)
-		newBalance := big.NewInt(0)
-		if utils.ArrayContains(NODE_TENDERLY, chain) {
-			// Use Tenderly node
-
-			// Send simulation
-			simulationResponse := sendSimulation(chain, calldatasWithdrawFees, calldatasBurnMany, targetTokenBalanceRequest)
-
-			// Extract 3CRV balance
-			firstResult := simulationResponse.Result[0]
-			lastResult := simulationResponse.Result[len(simulationResponse.Result)-1]
-
-			// Extract data
-			var success bool
-			balance, success = new(big.Int).SetString(firstResult.Trace[0].DecodedOutput[0].Value.(string), 10)
-			if !success {
-				log.Fatal(err)
-			}
-
-			newBalance, success = new(big.Int).SetString(lastResult.Trace[0].DecodedOutput[0].Value.(string), 10)
-			if !success {
-				log.Fatal(err)
-			}
+		fmt.Println("computing fees for chain ", chain)
+		if utils.ArrayContains(COWSWAP_BURNER_CHAINS, chain) {
+			earned[chain] = estimatedWithCowswapBurner(client, allPools, chain, COWSWAP_CHAINS[chain])
 		} else {
-			// Use fork
-			forkRpcUrl, forkId := createFork(FORK_CHAIN_ID[chain])
-			defer deleteFork(forkId)
-
-			forkClient, err := ethclient.Dial(forkRpcUrl)
-			if err != nil {
-				fmt.Println("Error when creating rpc ", forkRpcUrl)
-				continue
-			}
-
-			// Simulation de l'exécution de la transaction
-			targetTokenContract, err := erc20.NewErc20(TARGET_TOKEN[chain], forkClient)
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			balance, err = targetTokenContract.BalanceOf(nil, FEE_RECEIVERS[chain])
-
-			to := POOL_OWNERS[chain]
-
-			for _, call := range calldatasWithdrawFees {
-				sendTx(forkClient, to, call)
-			}
-
-			for _, call := range calldatasBurnMany {
-				sendTx(forkClient, to, call)
-			}
-
-			newBalance, err = targetTokenContract.BalanceOf(nil, FEE_RECEIVERS[chain])
+			earned[chain] = estimatedWithSimulation(client, allPools, chain)
 		}
-
-		earned[chain] = utils.Quo(new(big.Int).Sub(newBalance, balance), TARKET_TOKEN_DECIMALS[chain])
 	}
 
 	fmt.Println(earned)
@@ -221,6 +143,305 @@ func PendingPoolFees(client *ethclient.Client, currentBlockf uint64, currentBloc
 		LastDistributionAmount:    lastDistributionAmount,
 		Pending3CRVFees:           earned,
 	})
+}
+
+func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, allPools []interfaces.CurvePool, chain string, cowswapChain string) float64 {
+
+	// Get fee collector address
+	feeCollector, exists := FEE_COLLECTOR_PER_CHAIN_COWSWAP_BURNER[chain]
+	if !exists {
+		return 0
+	}
+
+	client := mainnetClient
+	var err error
+	if !strings.EqualFold(chain, ETHEREUM_CHAIN) {
+		rpcUrl := utils.GetPublicRpcUrl(chain)
+		if len(rpcUrl) == 0 {
+			return 0
+		}
+
+		client, err = ethclient.Dial(rpcUrl)
+		if err != nil {
+			fmt.Println("Error when creating rpc ", rpcUrl)
+			return 0
+		}
+	}
+
+	// For all pool tokens + lp, check the fee collector balance
+	// Generate calldatas
+	coinsToQuote := make(map[common.Address]*big.Int)
+
+	for _, pool := range allPools {
+		if !strings.EqualFold(pool.BlockchainId, chain) {
+			continue
+		}
+
+		coin := common.HexToAddress(pool.LpTokenAddress)
+
+		_, exists := coinsToQuote[coin]
+		if !exists {
+			erc20Contract, err := erc20.NewErc20(coin, client)
+			if err != nil {
+				fmt.Println(pool.LpTokenAddress, err)
+				continue
+			}
+
+			balanceOf, err := erc20Contract.BalanceOf(nil, feeCollector)
+			if err != nil {
+				fmt.Println(pool.LpTokenAddress, err)
+				continue
+			}
+			coinsToQuote[coin] = balanceOf
+		}
+
+		for _, coin := range pool.Coins {
+
+			_, exists := coinsToQuote[common.HexToAddress(coin.Address)]
+			if !exists {
+
+				erc20Contract, err := erc20.NewErc20(common.HexToAddress(coin.Address), client)
+				if err != nil {
+					fmt.Println(coin.Address, err)
+					continue
+				}
+
+				balanceOf, err := erc20Contract.BalanceOf(nil, feeCollector)
+				if err != nil {
+					fmt.Println(coin.Address, err)
+					continue
+				}
+
+				coinsToQuote[common.HexToAddress(coin.Address)] = balanceOf
+			}
+		}
+	}
+
+	// Check withdraw_admin_fees
+	poolsWithWithdrawAdminFee := getPoolsWithWithdrawAdminFee(client, allPools, chain)
+	for _, pool := range poolsWithWithdrawAdminFee {
+		poolContract, err := curvePoolFactoryV2.NewCurvePoolFactoryV2(pool, client)
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+
+		i := big.NewInt(0)
+		for {
+			coin, err := poolContract.Coins(nil, i)
+			if err != nil {
+				break
+			}
+
+			balance, err := poolContract.AdminBalances(nil, i)
+			if err != nil {
+				break
+			}
+
+			value, exists := coinsToQuote[coin]
+			if !exists {
+				coinsToQuote[coin] = balance
+			} else {
+				coinsToQuote[coin] = new(big.Int).Add(value, balance)
+			}
+
+			i = new(big.Int).Add(i, big.NewInt(1))
+		}
+	}
+
+	// Get Cowswap quotes from cow api
+	fmt.Println("Quotes to do : ", len(coinsToQuote))
+	totalFees := 0.0
+	for coin, balance := range coinsToQuote {
+		quoteResp, err := quote(cowswapChain, coin, balance)
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+
+		if len(quoteResp.Quote.BuyAmount) == 0 {
+			fmt.Println("No buy amount for coin ", coin.Hex())
+			continue
+		}
+
+		bigIntValue := new(big.Int)
+
+		// Convertir la chaîne de caractères en big.Int
+		bigIntValue, success := bigIntValue.SetString(quoteResp.Quote.BuyAmount, 10)
+		if !success {
+			fmt.Println("Erreur de conversion de la chaîne en big.Int")
+			continue
+		}
+
+		totalFees += utils.Quo(bigIntValue, 18)
+	}
+
+	fmt.Println("totalFees", totalFees)
+	return totalFees
+}
+
+func quote(chain string, tokenToSell common.Address, amountToSell *big.Int) (*interfaces.CowswapQuote, error) {
+	posturl := "https://api.cow.fi/" + chain + "/api/v1/quote"
+
+	body := []byte(`{
+		"sellToken": "` + tokenToSell.Hex() + `",
+		"buyToken": "0xf939E0A03FB07F59A73314E73794Be0E57ac1b4E",
+		"receiver": "0xD16d5eC345Dd86Fb63C6a9C43c517210F1027914",
+		"sellTokenBalance": "erc20",
+		"buyTokenBalance": "erc20",
+		"from": "0xD16d5eC345Dd86Fb63C6a9C43c517210F1027914",
+		"priceQuality": "verified",
+		"signingScheme": "eip712",
+		"onchainOrder": false,
+		"kind": "sell",
+		"sellAmountBeforeFee": "` + amountToSell.String() + `"
+	}`)
+
+	fmt.Println(`{
+		"sellToken": "` + tokenToSell.Hex() + `",
+		"buyToken": "0xf939E0A03FB07F59A73314E73794Be0E57ac1b4E",
+		"receiver": "0xD16d5eC345Dd86Fb63C6a9C43c517210F1027914",
+		"sellTokenBalance": "erc20",
+		"buyTokenBalance": "erc20",
+		"from": "0xD16d5eC345Dd86Fb63C6a9C43c517210F1027914",
+		"priceQuality": "verified",
+		"signingScheme": "eip712",
+		"onchainOrder": false,
+		"kind": "sell",
+		"sellAmountBeforeFee": "` + amountToSell.String() + `"
+	}`)
+
+	r, err := http.NewRequest("POST", posturl, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, err
+	}
+
+	r.Header.Add("Content-Type", "application/json")
+
+	client := &http.Client{}
+	res, err := client.Do(r)
+	if err != nil {
+		return nil, err
+	}
+
+	defer res.Body.Close()
+
+	body, err = io.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Println(string(body))
+
+	quote := new(interfaces.CowswapQuote)
+
+	err = json.Unmarshal([]byte(body), &quote)
+	if err != nil {
+		return nil, err
+	}
+
+	return quote, nil
+}
+
+func estimatedWithSimulation(client *ethclient.Client, allPools []interfaces.CurvePool, chain string) float64 {
+	pools := make([]interfaces.CurvePool, 0)
+	for _, pool := range allPools {
+		if strings.EqualFold(chain, pool.BlockchainId) {
+			pools = append(pools, pool)
+		}
+	}
+
+	clientChain := client
+	var err error
+	if !strings.EqualFold(chain, ETHEREUM_CHAIN) {
+		rpcUrl := utils.GetPublicRpcUrl(chain)
+		if len(rpcUrl) == 0 {
+			return 0
+		}
+
+		clientChain, err = ethclient.Dial(rpcUrl)
+		if err != nil {
+			fmt.Println("Error when creating rpc ", rpcUrl)
+			return 0
+		}
+	}
+
+	// Generate calldatas for withdraw_many
+	poolsWithWithdrawAdminFee := getPoolsWithWithdrawAdminFee(clientChain, pools, chain)
+	// 0x3165fbc056036ad3bc38ddf39f1764220a0e562a
+	//poolsWithWithdrawAdminFee = removeRevert(clientChain, "withdraw_admin_fees", poolsWithWithdrawAdminFee, chain)
+	//chunkPoolsWithdrawAdminFees := utils.ChunkAddressSlice(poolsWithWithdrawAdminFee, NB_ADDRESSES_IN_FUNCTION)
+	calldatasWithdrawFees := getCalldatas("withdraw_admin_fees", poolsWithWithdrawAdminFee)
+
+	// Generate calldatas for burn_many
+	coinsWithBurnersSimpe := getTokensWithBurners(clientChain, pools, chain)
+	//coinsWithBurnersSimpe = removeRevert(clientChain, "burn", coinsWithBurnersSimpe, chain)
+
+	coinsWithBurnersSimpe = manageTokens(coinsWithBurnersSimpe, TARGET_TOKEN_BEFORE_SEND[chain], pools, chain)
+
+	//coinsWithBurners := utils.ChunkAddressSlice(coinsWithBurnersSimpe, NB_ADDRESSES_IN_FUNCTION)
+	calldatasBurnMany := getCalldatas("burn", coinsWithBurnersSimpe)
+
+	// Generate target token balance calldata
+	targetTokenBalanceRequest := getTargetTokenBalanceCallData(chain)
+
+	balance := big.NewInt(0)
+	newBalance := big.NewInt(0)
+
+	if utils.ArrayContains(NODE_TENDERLY, chain) {
+		// Use Tenderly node
+
+		// Send simulation
+		simulationResponse := sendSimulation(chain, calldatasWithdrawFees, calldatasBurnMany, targetTokenBalanceRequest)
+
+		// Extract 3CRV balance
+		firstResult := simulationResponse.Result[0]
+		lastResult := simulationResponse.Result[len(simulationResponse.Result)-1]
+
+		// Extract data
+		var success bool
+		balance, success = new(big.Int).SetString(firstResult.Trace[0].DecodedOutput[0].Value.(string), 10)
+		if !success {
+			log.Fatal(err)
+		}
+
+		newBalance, success = new(big.Int).SetString(lastResult.Trace[0].DecodedOutput[0].Value.(string), 10)
+		if !success {
+			log.Fatal(err)
+		}
+	} else {
+		// Use fork
+		forkRpcUrl, forkId := createFork(FORK_CHAIN_ID[chain])
+		defer deleteFork(forkId)
+
+		forkClient, err := ethclient.Dial(forkRpcUrl)
+		if err != nil {
+			fmt.Println("Error when creating rpc ", forkRpcUrl)
+			return 0
+		}
+
+		// Simulation de l'exécution de la transaction
+		targetTokenContract, err := erc20.NewErc20(TARGET_TOKEN[chain], forkClient)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		balance, err = targetTokenContract.BalanceOf(nil, FEE_RECEIVERS[chain])
+
+		to := POOL_OWNERS[chain]
+
+		for _, call := range calldatasWithdrawFees {
+			sendTx(forkClient, to, call)
+		}
+
+		for _, call := range calldatasBurnMany {
+			sendTx(forkClient, to, call)
+		}
+
+		newBalance, err = targetTokenContract.BalanceOf(nil, FEE_RECEIVERS[chain])
+	}
+
+	return utils.Quo(new(big.Int).Sub(newBalance, balance), TARKET_TOKEN_DECIMALS[chain])
 }
 
 func fetchLastDistribution(client *ethclient.Client, currentBlock uint64, lastBlock uint64, lastTimestamp uint64, lastDistributionAmount uint64) (uint64, uint64) {
