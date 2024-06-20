@@ -482,7 +482,7 @@ func fetchLastDistribution(client *ethclient.Client, currentBlock uint64, lastBl
 			continue
 		}
 
-		if !strings.EqualFold(event.To.Hex(), utils.FEE_COLLECTOR_MAINNET.Hex()) {
+		if !strings.EqualFold(event.To.Hex(), utils.FEE_DISTRIBUTOR_MAINNET.Hex()) {
 			continue
 		}
 
