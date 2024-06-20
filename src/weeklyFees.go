@@ -69,7 +69,7 @@ func fetchWeeklyFees(client *ethclient.Client, currentBlock uint64, config inter
 			continue
 		}
 
-		if strings.EqualFold(event.To.Hex(), utils.FEE_COLLECTOR_MAINNET.Hex()) {
+		if strings.EqualFold(event.To.Hex(), utils.FEE_DISTRIBUTOR_MAINNET.Hex()) {
 			header, err := client.BlockByNumber(context.Background(), big.NewInt(int64(vLog.BlockNumber)))
 			if err != nil {
 				continue
