@@ -46,7 +46,7 @@ func fetchWeeklyFees(client *ethclient.Client, currentBlock uint64, config inter
 	query := ethereum.FilterQuery{
 		FromBlock: big.NewInt(int64(from)),
 		ToBlock:   big.NewInt(int64(currentBlock)),
-		Addresses: []common.Address{utils.THREE_CRV},
+		Addresses: []common.Address{utils.CRVUSD_ADDRESS},
 		Topics:    [][]common.Hash{{common.HexToHash("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef")}},
 	}
 
@@ -69,7 +69,7 @@ func fetchWeeklyFees(client *ethclient.Client, currentBlock uint64, config inter
 			continue
 		}
 
-		if strings.EqualFold(event.To.Hex(), utils.FEES_DISTRIBUTOR_MAINNET.Hex()) {
+		if strings.EqualFold(event.To.Hex(), utils.FEE_COLLECTOR_MAINNET.Hex()) {
 			header, err := client.BlockByNumber(context.Background(), big.NewInt(int64(vLog.BlockNumber)))
 			if err != nil {
 				continue

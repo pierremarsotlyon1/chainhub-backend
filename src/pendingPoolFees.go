@@ -67,7 +67,6 @@ var POOL_OWNERS = map[string]common.Address{
 
 // Contract which receive target token to distribute
 var FEE_RECEIVERS = map[string]common.Address{
-	ETHEREUM_CHAIN:  utils.FEES_DISTRIBUTOR_MAINNET,
 	POLYGON_CHAIN:   utils.ADMIN_RECEIVER_FEE_POLYGON,
 	OPTIMISM_CHAIN:  utils.ADMIN_RECEIVER_FEE_OPTIMISM,
 	ARBITRUM_CHAIN:  utils.ADMIN_RECEIVER_FEE_ARBITRUM,
@@ -458,7 +457,7 @@ func fetchLastDistribution(client *ethclient.Client, currentBlock uint64, lastBl
 	query := ethereum.FilterQuery{
 		FromBlock: big.NewInt(int64(from)),
 		ToBlock:   big.NewInt(int64(currentBlock)),
-		Addresses: []common.Address{utils.THREE_CRV},
+		Addresses: []common.Address{utils.CRVUSD_ADDRESS},
 		Topics:    [][]common.Hash{{common.HexToHash("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef")}},
 	}
 
@@ -483,7 +482,7 @@ func fetchLastDistribution(client *ethclient.Client, currentBlock uint64, lastBl
 			continue
 		}
 
-		if !strings.EqualFold(event.To.Hex(), utils.FEES_DISTRIBUTOR_MAINNET.Hex()) {
+		if !strings.EqualFold(event.To.Hex(), utils.FEE_COLLECTOR_MAINNET.Hex()) {
 			continue
 		}
 

@@ -13,7 +13,6 @@ var CURVE_GC_ADDRESS = common.HexToAddress("0x2F50D538606Fa9EDD2B11E2446BEb18C9D
 var POOL_OWNER_PENDING_FEES_OWNER = common.HexToAddress("0x8c73d39b2da2dd1a10cc16502bc7c8d768ec74c9")
 
 var POOL_OWNER_PENDING_FEES_MAINNET = common.HexToAddress("0xecb456ea5365865ebab8a2661b0c503410e9b347")
-var FEES_DISTRIBUTOR_MAINNET = common.HexToAddress("0xA464e6DCda8AC41e03616F95f4BC98a13b8922Dc")
 
 // New fee collector / distributor with cowswap burner
 var FEE_COLLECTOR_MAINNET = common.HexToAddress("0xa2Bcd1a4Efbd04B63cd03f5aFf2561106ebCCE00")
