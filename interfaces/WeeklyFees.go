@@ -9,8 +9,10 @@ type WeeklyFees struct {
 }
 
 type WeeklyFeesTable struct {
-	Ts   uint64  `json:"ts"`
-	Fees float64 `json:"rawFees"`
+	Ts      uint64  `json:"ts"`
+	Fees    float64 `json:"rawFees"`
+	FeesUSD float64 `json:"feesUSD"`
+	Symbol  string  `json:"symbol"`
 }
 
 type WeeklyFee struct {

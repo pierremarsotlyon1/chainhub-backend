@@ -110,8 +110,18 @@ func computeTransfer(transfers []interfaces.WeeklyFee) {
 	}
 
 	threeCrvPrice := utils.GetHistoricalPriceTokenPrice(utils.THREE_CRV, "ethereum", uint64(time.Now().Unix()))
+	crvUSDPrice := utils.GetHistoricalPriceTokenPrice(utils.CRVUSD_ADDRESS, "ethereum", uint64(time.Now().Unix()))
+
 	for i := 0; i < len(table); i++ {
-		table[i].Fees = table[i].Fees * threeCrvPrice
+		if table[i].Ts >= 1718920800 {
+			// crvUSD
+			table[i].FeesUSD = table[i].Fees * crvUSDPrice
+			table[i].Symbol = "crvUSD"
+		} else {
+			// 3CRV
+			table[i].FeesUSD = table[i].Fees * threeCrvPrice
+			table[i].Symbol = "3CRV"
+		}
 	}
 
 	writeWeeklyFees(table)
