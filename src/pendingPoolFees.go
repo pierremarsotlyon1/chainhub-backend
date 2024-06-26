@@ -264,7 +264,31 @@ func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, allPools []inte
 		}
 
 		if len(quoteResp.Quote.BuyAmount) == 0 {
-			fmt.Println("No buy amount for coin ", coin.Hex())
+			for _, pool := range allPools {
+				found := false
+				for _, coinPool := range pool.Coins {
+					if strings.EqualFold(coin.Hex(), coinPool.Address) {
+						found = true
+
+						erc20Contract, err := erc20.NewErc20(coin, client)
+						if err != nil {
+							break
+						}
+
+						decimals, err := erc20Contract.Decimals(nil)
+						if err != nil {
+							break
+						}
+
+						totalFees += coinPool.UsdPrice * utils.Quo(balance, uint64(decimals))
+						break
+					}
+				}
+
+				if found {
+					break
+				}
+			}
 			continue
 		}
 
