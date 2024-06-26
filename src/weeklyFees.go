@@ -113,7 +113,7 @@ func computeTransfer(transfers []interfaces.WeeklyFee) {
 	crvUSDPrice := utils.GetHistoricalPriceTokenPrice(utils.CRVUSD_ADDRESS, "ethereum", uint64(time.Now().Unix()))
 
 	for i := 0; i < len(table); i++ {
-		if table[i].Ts >= 1718920800 {
+		if table[i].Ts >= 1718841600 {
 			// crvUSD
 			table[i].FeesUSD = table[i].Fees * crvUSDPrice
 			table[i].Symbol = "crvUSD"
