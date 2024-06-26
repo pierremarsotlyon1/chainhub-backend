@@ -466,8 +466,6 @@ func fetchLastDistribution(client *ethclient.Client, currentBlock uint64, lastBl
 		return lastTimestamp, lastDistributionAmount
 	}
 
-	burners := readMap(BURNERS_DATA)
-
 	timestamp := lastTimestamp
 	for _, vLog := range logs {
 		contract, err := erc20.NewErc20(vLog.Address, client)
@@ -486,19 +484,7 @@ func fetchLastDistribution(client *ethclient.Client, currentBlock uint64, lastBl
 			continue
 		}
 
-		from := event.From.Hex()
-		ok := strings.EqualFold(utils.POOL_OWNER_PENDING_FEES_MAINNET.Hex(), from) || strings.EqualFold(utils.CURVE_SWAP_ROUTER.Hex(), from)
-
-		if !ok {
-			for burnerAddress := range burners {
-				if strings.EqualFold(from, burnerAddress.Hex()) {
-					ok = true
-					break
-				}
-			}
-		}
-
-		if !ok {
+		if !strings.EqualFold(utils.HOOKER_MAINNET.Hex(), event.From.Hex()) {
 			continue
 		}
 
