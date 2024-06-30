@@ -31,6 +31,7 @@ const (
 	POOL_WITH_WITHDRAW_ADMIN_FEES_DATA = "./data/pendingPoolFees/pool-with-withdraw-admin-fees.json"
 	BURNERS_FOR_TOKEN_DATA             = "./data/pendingPoolFees/burnes-for-tokens.json"
 	BURNERS_DATA                       = "./data/pendingPoolFees/burners.json"
+	COWSWAP_FEES_PER_TOKEN_PATH        = "./data/pendingPoolFees/cowswap-fees-per-token"
 	NB_ADDRESSES_IN_FUNCTION           = 20
 	ETHEREUM_CHAIN                     = "ethereum"
 	POLYGON_CHAIN                      = "polygon"
@@ -251,6 +252,8 @@ func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, allPools []inte
 	// Get Cowswap quotes from cow api
 	fmt.Println("Quotes to do : ", len(coinsToQuote))
 	totalFees := 0.0
+	feesPerToken := make(map[string]float64, 0)
+
 	for coin, balance := range coinsToQuote {
 		if balance.Cmp(big.NewInt(0)) == 0 {
 			// Empty balance
@@ -280,7 +283,9 @@ func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, allPools []inte
 							break
 						}
 
-						totalFees += coinPool.UsdPrice * utils.Quo(balance, uint64(decimals))
+						amount := coinPool.UsdPrice * utils.Quo(balance, uint64(decimals))
+						totalFees += amount
+						feesPerToken[coin.Hex()] = amount
 						break
 					}
 				}
@@ -290,20 +295,23 @@ func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, allPools []inte
 				}
 			}
 			continue
+		} else {
+			bigIntValue := new(big.Int)
+
+			// Convertir la chaîne de caractères en big.Int
+			bigIntValue, success := bigIntValue.SetString(quoteResp.Quote.BuyAmount, 10)
+			if !success {
+				fmt.Println("Erreur de conversion de la chaîne en big.Int")
+				continue
+			}
+
+			amount := utils.Quo(bigIntValue, 18)
+			totalFees += amount
+			feesPerToken[coin.Hex()] = amount
 		}
-
-		bigIntValue := new(big.Int)
-
-		// Convertir la chaîne de caractères en big.Int
-		bigIntValue, success := bigIntValue.SetString(quoteResp.Quote.BuyAmount, 10)
-		if !success {
-			fmt.Println("Erreur de conversion de la chaîne en big.Int")
-			continue
-		}
-
-		totalFees += utils.Quo(bigIntValue, 18)
 	}
 
+	writeMapFees(feesPerToken, COWSWAP_FEES_PER_TOKEN_PATH+"-"+chain+".json")
 	fmt.Println("totalFees", totalFees)
 	return totalFees
 }
@@ -1044,6 +1052,17 @@ func readMap(path string) map[common.Address]bool {
 }
 
 func writeMap(pools map[common.Address]bool, path string) {
+	file, err := json.Marshal(pools)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if err := os.WriteFile(path, file, 0644); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func writeMapFees(pools map[string]float64, path string) {
 	file, err := json.Marshal(pools)
 	if err != nil {
 		log.Fatal(err)
