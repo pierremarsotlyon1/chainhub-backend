@@ -278,7 +278,12 @@ func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, allPools []inte
 	balances := make(map[common.Address]*big.Int)
 	for _, quote := range coinsToQuotePerContract {
 		for token, balance := range quote {
-			balances[token] = balance
+			value, exists := balances[token]
+			if !exists {
+				balances[token] = balance
+			} else {
+				balances[token] = new(big.Int).Add(value, balance)
+			}
 		}
 	}
 
