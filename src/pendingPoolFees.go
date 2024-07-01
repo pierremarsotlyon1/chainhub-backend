@@ -10,6 +10,7 @@ import (
 	"log"
 	"main/contracts/curvePoolFactoryV2"
 	"main/contracts/erc20"
+	"main/contracts/feeCollector"
 	"main/contracts/poolOwnerPendingFees"
 	"main/interfaces"
 	"main/utils"
@@ -148,7 +149,7 @@ func PendingPoolFees(client *ethclient.Client, currentBlockf uint64, currentBloc
 func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, allPools []interfaces.CurvePool, chain string, cowswapChain string) float64 {
 
 	// Get fee collector address
-	feeCollector, exists := FEE_COLLECTOR_PER_CHAIN_COWSWAP_BURNER[chain]
+	feeCollectorAddress, exists := FEE_COLLECTOR_PER_CHAIN_COWSWAP_BURNER[chain]
 	if !exists {
 		return 0
 	}
@@ -168,51 +169,71 @@ func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, allPools []inte
 		}
 	}
 
+	// Get burner
+	feeCollectorContract, err := feeCollector.NewFeeCollector(feeCollectorAddress, client)
+	if err != nil {
+		return 0
+	}
+
+	burner, err := feeCollectorContract.Burner(nil)
+	if err != nil {
+		return 0
+	}
+
+	balanceOfAddresses := []common.Address{burner, feeCollectorAddress}
+
 	// For all pool tokens + lp, check the fee collector balance
 	// Generate calldatas
-	coinsToQuote := make(map[common.Address]*big.Int)
+	coinsToQuotePerContract := make(map[common.Address]map[common.Address]*big.Int)
 
-	for _, pool := range allPools {
-		if !strings.EqualFold(pool.BlockchainId, chain) {
-			continue
-		}
-
-		coin := common.HexToAddress(pool.LpTokenAddress)
-
-		_, exists := coinsToQuote[coin]
+	for _, balanceOfAddress := range balanceOfAddresses {
+		_, exists := coinsToQuotePerContract[balanceOfAddress]
 		if !exists {
-			erc20Contract, err := erc20.NewErc20(coin, client)
-			if err != nil {
-				fmt.Println(pool.LpTokenAddress, err)
-				continue
-			}
-
-			balanceOf, err := erc20Contract.BalanceOf(nil, feeCollector)
-			if err != nil {
-				fmt.Println(pool.LpTokenAddress, err)
-				continue
-			}
-			coinsToQuote[coin] = balanceOf
+			coinsToQuotePerContract[balanceOfAddress] = make(map[common.Address]*big.Int, 0)
 		}
 
-		for _, coin := range pool.Coins {
+		for _, pool := range allPools {
+			if !strings.EqualFold(pool.BlockchainId, chain) {
+				continue
+			}
 
-			_, exists := coinsToQuote[common.HexToAddress(coin.Address)]
+			coin := common.HexToAddress(pool.LpTokenAddress)
+
+			_, exists := coinsToQuotePerContract[balanceOfAddress][coin]
 			if !exists {
-
-				erc20Contract, err := erc20.NewErc20(common.HexToAddress(coin.Address), client)
+				erc20Contract, err := erc20.NewErc20(coin, client)
 				if err != nil {
-					fmt.Println(coin.Address, err)
+					fmt.Println(pool.LpTokenAddress, err)
 					continue
 				}
 
-				balanceOf, err := erc20Contract.BalanceOf(nil, feeCollector)
+				balanceOf, err := erc20Contract.BalanceOf(nil, balanceOfAddress)
 				if err != nil {
-					fmt.Println(coin.Address, err)
+					fmt.Println(pool.LpTokenAddress, err)
 					continue
 				}
+				coinsToQuotePerContract[balanceOfAddress][coin] = balanceOf
+			}
 
-				coinsToQuote[common.HexToAddress(coin.Address)] = balanceOf
+			for _, coin := range pool.Coins {
+
+				_, exists := coinsToQuotePerContract[balanceOfAddress][common.HexToAddress(coin.Address)]
+				if !exists {
+
+					erc20Contract, err := erc20.NewErc20(common.HexToAddress(coin.Address), client)
+					if err != nil {
+						fmt.Println(coin.Address, err)
+						continue
+					}
+
+					balanceOf, err := erc20Contract.BalanceOf(nil, balanceOfAddress)
+					if err != nil {
+						fmt.Println(coin.Address, err)
+						continue
+					}
+
+					coinsToQuotePerContract[balanceOfAddress][common.HexToAddress(coin.Address)] = balanceOf
+				}
 			}
 		}
 	}
@@ -238,11 +259,11 @@ func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, allPools []inte
 				break
 			}
 
-			value, exists := coinsToQuote[coin]
+			value, exists := coinsToQuotePerContract[feeCollectorAddress][coin]
 			if !exists {
-				coinsToQuote[coin] = balance
+				coinsToQuotePerContract[feeCollectorAddress][coin] = balance
 			} else {
-				coinsToQuote[coin] = new(big.Int).Add(value, balance)
+				coinsToQuotePerContract[feeCollectorAddress][coin] = new(big.Int).Add(value, balance)
 			}
 
 			i = new(big.Int).Add(i, big.NewInt(1))
@@ -250,11 +271,18 @@ func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, allPools []inte
 	}
 
 	// Get Cowswap quotes from cow api
-	fmt.Println("Quotes to do : ", len(coinsToQuote))
+	fmt.Println("Quotes to do : ", len(coinsToQuotePerContract))
 	totalFees := 0.0
 	feesPerToken := make(map[string]float64, 0)
 
-	for coin, balance := range coinsToQuote {
+	balances := make(map[common.Address]*big.Int)
+	for _, quote := range coinsToQuotePerContract {
+		for token, balance := range quote {
+			balances[token] = balance
+		}
+	}
+
+	for coin, balance := range balances {
 		if balance.Cmp(big.NewInt(0)) == 0 {
 			// Empty balance
 			continue

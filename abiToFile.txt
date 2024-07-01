@@ -32,3 +32,4 @@ abigen --abi=./abis/LlamalendVault.json --pkg=llamalendVault --out=LlamalendVaul
 abigen --abi=./abis/CurvePoolFactoryV2.json --pkg=curvePoolFactoryV2 --out=CurvePoolFactoryV2.go
 
 abigen --abi=./abis/Escrow.json --pkg=escrow --out=Escrow.go
+abigen --abi=./abis/FeeCollector.json --pkg=feeCollector --out=FeeCollector.go
