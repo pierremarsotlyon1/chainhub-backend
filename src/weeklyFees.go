@@ -5,12 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"main/contracts/erc20"
+	"main/contracts/feeDistributor"
 	"main/interfaces"
 	"main/utils"
 	"math/big"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum"
@@ -46,8 +45,8 @@ func fetchWeeklyFees(client *ethclient.Client, currentBlock uint64, config inter
 	query := ethereum.FilterQuery{
 		FromBlock: big.NewInt(int64(from)),
 		ToBlock:   big.NewInt(int64(currentBlock)),
-		Addresses: []common.Address{utils.CRVUSD_ADDRESS},
-		Topics:    [][]common.Hash{{common.HexToHash("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef")}},
+		Addresses: []common.Address{utils.FEE_DISTRIBUTOR_MAINNET},
+		Topics:    [][]common.Hash{{common.HexToHash("0xce749457b74e10f393f2c6b1ce4261b78791376db5a3f501477a809f03f500d6")}},
 	}
 
 	logs, err := client.FilterLogs(context.Background(), query)
@@ -58,29 +57,32 @@ func fetchWeeklyFees(client *ethclient.Client, currentBlock uint64, config inter
 	transfers := make([]interfaces.WeeklyFee, 0)
 
 	for _, vLog := range logs {
-		erc20Contract, err := erc20.NewErc20(vLog.Address, client)
+
+		feeDistributorContract, err := feeDistributor.NewFeeDistributor(vLog.Address, client)
 		if err != nil {
 			panic(err)
 		}
 
-		event, err := erc20Contract.ParseTransfer(vLog)
+		event, err := feeDistributorContract.ParseCheckpointToken(vLog)
 		if err != nil {
 			fmt.Println(err)
 			continue
 		}
 
-		if strings.EqualFold(event.To.Hex(), utils.FEE_DISTRIBUTOR_MAINNET.Hex()) {
-			header, err := client.BlockByNumber(context.Background(), big.NewInt(int64(vLog.BlockNumber)))
-			if err != nil {
-				continue
-			}
-
-			transfers = append(transfers, interfaces.WeeklyFee{
-				Ts:     header.Time(),
-				Fees:   utils.Quo(event.Value, 18),
-				TxHash: vLog.TxHash,
-			})
+		header, err := client.BlockByNumber(context.Background(), big.NewInt(int64(vLog.BlockNumber)))
+		if err != nil {
+			continue
 		}
+
+		if event.Tokens.Cmp(big.NewInt(0)) == 0 {
+			continue
+		}
+
+		transfers = append(transfers, interfaces.WeeklyFee{
+			Ts:     header.Time(),
+			Fees:   utils.Quo(event.Tokens, 18),
+			TxHash: vLog.TxHash,
+		})
 	}
 
 	return transfers
