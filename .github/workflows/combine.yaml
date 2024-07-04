@@ -35,17 +35,16 @@ jobs:
           go run ./main.go peg
           go run ./main.go votes
 
-      - name: Update from main
-        run: |
+      - run: |
           git config --local user.email "actions@github.com"
           git config --local user.name "Automation"
-          git config pull.rebase false
           git checkout main
-          git add .
-          git commit -m "Combine"
           git pull
-          git merge --strategy=ours origin/main
-          git push
+          git checkout ${{github.ref_name}}
+          git pull
         shell: bash
         if: always()
+
+      - name: Commit and Push
+        uses: stefanzweifel/git-auto-commit-action@v5
 
