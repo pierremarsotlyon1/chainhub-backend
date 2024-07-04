@@ -74,6 +74,6 @@ func main() {
 	case "peg":
 		src.Pegs(client)
 	case "weeklyFees":
-		src.WeeklyFees(client, lastestBlock.NumberU64())
+		src.WeeklyFees(client)
 	}
 }
