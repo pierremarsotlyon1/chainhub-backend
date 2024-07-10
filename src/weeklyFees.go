@@ -77,7 +77,7 @@ func WeeklyFees(client *ethclient.Client) {
 
 			period += utils.WEEK_TO_SEC
 
-			if period >= currentPeriod {
+			if period > currentPeriod {
 				run = false
 				break
 			}
