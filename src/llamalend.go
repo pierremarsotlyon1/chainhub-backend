@@ -434,7 +434,7 @@ func getTokenPrice(tokenAddress common.Address, chainName string, timestamp uint
 		for _, pool := range curvePools {
 			for _, coin := range pool.Coins {
 				if strings.EqualFold(coin.Address, tokenAddress.Hex()) {
-					return coin.UsdPrice
+					return coin.UsdPrice.(float64)
 				}
 			}
 		}

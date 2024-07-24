@@ -69,7 +69,7 @@ func GetPriceFromCurvePools(tokenAddress common.Address, curvePools []interfaces
 	for _, pool := range curvePools {
 		for _, coin := range pool.Coins {
 			if strings.EqualFold(coin.Address, tokenAddress.Hex()) {
-				return coin.UsdPrice
+				return coin.UsdPrice.(float64)
 			}
 		}
 	}

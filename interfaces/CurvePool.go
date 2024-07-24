@@ -1,9 +1,9 @@
 package interfaces
 
 type Coin struct {
-	Address  string  `json:"address"`
-	Symbol   string  `json:"symbol"`
-	UsdPrice float64 `json:"usdPrice"`
+	Address  string      `json:"address"`
+	Symbol   string      `json:"symbol"`
+	UsdPrice interface{} `json:"usdPrice"`
 }
 
 type CurvePool struct {
