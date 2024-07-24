@@ -39,10 +39,10 @@ func FetchVotes(client *ethclient.Client, currentBlock uint64) {
 	// Read new vote event to fetch ipfs description
 	from := config.LastBlock
 	if from == 0 {
-		from = 10648599
+		from = 10648598
 	}
 	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(int64(from)),
+		FromBlock: big.NewInt(int64(from) + 1),
 		ToBlock:   big.NewInt(int64(currentBlock)),
 		Addresses: []common.Address{CURVE_OWNERSHIP_VOTER, CURVE_PARAMETER_VOTER},
 		Topics: [][]common.Hash{{

@@ -295,11 +295,11 @@ func collectData(wgCollectData *sync.WaitGroup, tokenExchangeChan chan interface
 func getFees(feesChan chan interfaces.PegKeeperFee, client *ethclient.Client, pegKeeperAddress common.Address, opts *bind.CallOpts, config interfaces.Config) {
 	from := config.LastBlock
 	if from == 0 {
-		from = 17258031
+		from = 17258030
 	}
 
 	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(int64(from)),
+		FromBlock: big.NewInt(int64(from) + 1),
 		ToBlock:   opts.BlockNumber,
 		Addresses: []common.Address{pegKeeperAddress},
 		Topics:    [][]common.Hash{{common.HexToHash("0x357d905f1831209797df4d55d79c5c5bf1d9f7311c976afd05e13d881eab9bc8")}},
@@ -353,11 +353,11 @@ func getFees(feesChan chan interfaces.PegKeeperFee, client *ethclient.Client, pe
 func getVolume(tokenExchangeChan chan interfaces.TokenExchange, client *ethclient.Client, pegKeeperAddress common.Address, poolAddress common.Address, opts *bind.CallOpts, config interfaces.Config) {
 	from := config.LastBlock
 	if from == 0 {
-		from = 17258031
+		from = 17258030
 	}
 
 	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(int64(from)),
+		FromBlock: big.NewInt(int64(from) + 1),
 		ToBlock:   opts.BlockNumber,
 		Addresses: []common.Address{poolAddress},
 		Topics:    [][]common.Hash{{common.HexToHash("0x8b3e96f2b889fa771c53c981b40daf005f63f637f1869f707052d15a3dd97140")}},

@@ -517,10 +517,10 @@ func fetchLastDistribution(client *ethclient.Client, currentBlock uint64, lastBl
 
 	from := lastBlock
 	if from == 0 {
-		from = 19526062
+		from = 19526061
 	}
 	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(int64(from)),
+		FromBlock: big.NewInt(int64(from) + 1),
 		ToBlock:   big.NewInt(int64(currentBlock)),
 		Addresses: []common.Address{utils.CRVUSD_ADDRESS},
 		Topics:    [][]common.Hash{{common.HexToHash("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef")}},

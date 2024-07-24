@@ -176,10 +176,10 @@ func fetchVotium(client *ethclient.Client, curvePools []interfaces.CurvePool, cu
 	// veCRV
 	from := config.LastBlock
 	if from == 0 {
-		from = 14730004
+		from = 14730003
 	}
 	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(int64(from)),
+		FromBlock: big.NewInt(int64(from) + 1),
 		ToBlock:   big.NewInt(int64(currentBlock)),
 		Addresses: VOTIUM_VE_CRV_ADDRESSES,
 		Topics:    [][]common.Hash{{common.HexToHash("0x51c8cd367a987b8c2f652c101ea7076ec8e4dfd33c4c77bb80e018e7143b6512")}},
@@ -210,10 +210,10 @@ func fetchVotium(client *ethclient.Client, curvePools []interfaces.CurvePool, cu
 	// vlCVX V2
 	from = config.LastBlock
 	if from == 0 {
-		from = 13320169
+		from = 13320168
 	}
 	query = ethereum.FilterQuery{
-		FromBlock: big.NewInt(int64(from)),
+		FromBlock: big.NewInt(int64(from) + 1),
 		ToBlock:   big.NewInt(int64(currentBlock)),
 		Addresses: VOTIUM_MERKLE_V2,
 		Topics:    [][]common.Hash{{common.HexToHash("0x4766921f5c59646d22d7d266a29164c8e9623684d8dfdbd931731dfdca025238")}},
@@ -245,10 +245,10 @@ func fetchVotemarketV1(client *ethclient.Client, curvePools []interfaces.CurvePo
 
 	from := config.LastBlock
 	if from == 0 {
-		from = 16376672
+		from = 16376671
 	}
 	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(int64(from)),
+		FromBlock: big.NewInt(int64(from) + 1),
 		ToBlock:   big.NewInt(int64(currentBlock)),
 		Addresses: VOTEMARKET_ADDRESSES_V1,
 		Topics:    [][]common.Hash{{common.HexToHash("0x6f9c9826be5976f3f82a3490c52a83328ce2ec7be9e62dcb39c26da5148d7c76")}},
@@ -283,10 +283,10 @@ func fetchVotemarketV2(client *ethclient.Client, curvePools []interfaces.CurvePo
 
 	from := config.LastBlock
 	if from == 0 {
-		from = 16376672
+		from = 16376671
 	}
 	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(int64(from)),
+		FromBlock: big.NewInt(int64(from) + 1),
 		ToBlock:   big.NewInt(int64(currentBlock)),
 		Addresses: VOTEMARKET_ADDRESSES_V2,
 		Topics:    [][]common.Hash{{common.HexToHash("0x6f9c9826be5976f3f82a3490c52a83328ce2ec7be9e62dcb39c26da5148d7c76")}},
@@ -321,10 +321,10 @@ func fetchQuest(client *ethclient.Client, curvePools []interfaces.CurvePool, cur
 
 	from := config.LastBlock
 	if from == 0 {
-		from = 14784921
+		from = 14784920
 	}
 	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(int64(from)),
+		FromBlock: big.NewInt(int64(from) + 1),
 		ToBlock:   big.NewInt(int64(currentBlock)),
 		Addresses: QUEST_ADDRESSES,
 		Topics:    [][]common.Hash{{common.HexToHash("0x9a5376f7dcf8631c2b6249c9bec3d715cb97bdd4c82d92e55d147f6b4eea4197")}},
@@ -365,10 +365,10 @@ func fetchYBribe(client *ethclient.Client, curvePools []interfaces.CurvePool, cu
 
 	from := config.LastBlock
 	if from == 0 {
-		from = 15878262
+		from = 15878261
 	}
 	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(int64(from)),
+		FromBlock: big.NewInt(int64(from) + 1),
 		ToBlock:   big.NewInt(int64(currentBlock)),
 		Addresses: YBRIBE_ADDRESSES,
 		Topics:    [][]common.Hash{{common.HexToHash("0x2422cac5e23c46c890fdcf42d0c64757409df6832174df639337558f09d99c68")}},
