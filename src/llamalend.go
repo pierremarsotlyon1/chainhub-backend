@@ -57,7 +57,8 @@ func Llamalend() {
 
 	curvePools, err := utils.GetAllCurvePools()
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println(err)
+		return
 	}
 
 	currentMarkets := readMarkets()
