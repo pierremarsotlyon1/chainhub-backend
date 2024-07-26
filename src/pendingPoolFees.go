@@ -1031,7 +1031,7 @@ func addCrv(httpClient *http.Client, fromAddress common.Address, forkRpcUrl stri
 	defer res.Body.Close()
 }
 
-func mineBlocks(httpClient *http.Client, forkRpcUrl string, nbBlocks int64) {
+func mineBlocks(httpClient *http.Client, forkRpcUrl string, nbBlocks int64) error {
 	params := make([]interface{}, 0)
 
 	params = append(params, nbBlocks)
@@ -1042,25 +1042,26 @@ func mineBlocks(httpClient *http.Client, forkRpcUrl string, nbBlocks int64) {
 		Params:  params,
 	})
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	r, err := http.NewRequest("POST", forkRpcUrl, bytes.NewBuffer(body))
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	r.Header.Add("Content-Type", "application/json")
 
 	res, err := httpClient.Do(r)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	defer res.Body.Close()
+	return nil
 }
 
-func addTime(httpClient *http.Client, forkRpcUrl string, time int64) {
+func addTime(httpClient *http.Client, forkRpcUrl string, time int64) error {
 	params := make([]interface{}, 0)
 
 	params = append(params, time)
@@ -1071,22 +1072,23 @@ func addTime(httpClient *http.Client, forkRpcUrl string, time int64) {
 		Params:  params,
 	})
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	r, err := http.NewRequest("POST", forkRpcUrl, bytes.NewBuffer(body))
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	r.Header.Add("Content-Type", "application/json")
 
 	res, err := httpClient.Do(r)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	defer res.Body.Close()
+	return nil
 }
 
 func deleteFork(forkId string) {

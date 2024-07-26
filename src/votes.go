@@ -261,7 +261,9 @@ func getTenderlySimulation(vote interfaces.Vote) (string, error) {
 
 	// Add some blocks
 	httpClient := &http.Client{}
-	mineBlocks(httpClient, forkRpcUrl, BLOCK_BEFORE_SNAPSHOT+1)
+	if err = mineBlocks(httpClient, forkRpcUrl, BLOCK_BEFORE_SNAPSHOT+1); err != nil {
+		return "", err
+	}
 
 	// Create vote and vote yes but default
 	abi, err = voter.VoterMetaData.GetAbi()
@@ -286,8 +288,12 @@ func getTenderlySimulation(vote interfaces.Vote) (string, error) {
 	// Mine blocks to execute after
 	// 7200 blocks per day
 	// Mine one month blocks
-	mineBlocks(httpClient, forkRpcUrl, 7200*30)
-	addTime(httpClient, forkRpcUrl, now+(86400*30))
+	if err = mineBlocks(httpClient, forkRpcUrl, 7200*30); err != nil {
+		return "", err
+	}
+	if err = addTime(httpClient, forkRpcUrl, now+(86400*30)); err != nil {
+		return "", err
+	}
 
 	// Exec vote
 	abi, err = voter.VoterMetaData.GetAbi()
@@ -307,7 +313,7 @@ func getTenderlySimulation(vote interfaces.Vote) (string, error) {
 	// Get tx list
 	r, err := http.NewRequest("GET", "https://api.tenderly.co/api/v1/account/"+utils.GoDotEnvVariable("TENDERLY_SLUG")+"/project/"+utils.GoDotEnvVariable("TENDERLY_PROJECT_SLUG")+"/fork/"+forkId+"/transactions?page=1&perPage=20&exclude_internal=true", nil)
 	if err != nil {
-		log.Fatal(err)
+		return "", err
 	}
 
 	r.Header.Add("Content-Type", "application/json")
@@ -316,7 +322,7 @@ func getTenderlySimulation(vote interfaces.Vote) (string, error) {
 	httpClient = &http.Client{}
 	res, err := httpClient.Do(r)
 	if err != nil {
-		panic(err)
+		return "", err
 	}
 
 	defer res.Body.Close()
