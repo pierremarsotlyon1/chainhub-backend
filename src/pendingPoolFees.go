@@ -316,6 +316,9 @@ func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, allPools []inte
 							break
 						}
 
+						if coinPool.UsdPrice == nil {
+							coinPool.UsdPrice = 0
+						}
 						amount := coinPool.UsdPrice.(float64) * utils.Quo(balance, uint64(decimals))
 						totalFees += amount
 						feesPerToken[coin.Hex()] = amount
@@ -480,7 +483,7 @@ func estimatedWithSimulation(client *ethclient.Client, allPools []interfaces.Cur
 		}
 	} else {
 		// Use fork
-		forkRpcUrl, forkId := createFork(FORK_CHAIN_ID[chain])
+		forkRpcUrl, forkId, _ := createFork(FORK_CHAIN_ID[chain], 0)
 		defer deleteFork(forkId)
 
 		forkClient, err := ethclient.Dial(forkRpcUrl)
@@ -899,10 +902,23 @@ func manageTokens(coins []common.Address, coinsToManage []common.Address, allPoo
 	return results
 }
 
-func createFork(chainId string) (string, string) {
-	body, err := json.Marshal(interfaces.TenderlyForkRequest{
-		NetworkId: chainId,
-	})
+func createFork(chainId string, blockNumber int64) (string, string, *ecdsa.PrivateKey) {
+	var forkRequest interfaces.TenderlyForkRequest
+
+	if blockNumber == 0 {
+		forkRequest = interfaces.TenderlyForkRequest{
+			NetworkId: chainId,
+			Shared:    true,
+		}
+	} else {
+		forkRequest = interfaces.TenderlyForkRequest{
+			NetworkId:   chainId,
+			BlockNumber: blockNumber,
+			Shared:      true,
+		}
+	}
+
+	body, err := json.Marshal(forkRequest)
 
 	if err != nil {
 		log.Fatal(err)
@@ -946,13 +962,20 @@ func createFork(chainId string) (string, string) {
 
 	fromAddress := crypto.PubkeyToAddress(*publicKeyECDSA)
 
+	addEth(httpClient, fromAddress, forkRpcUrl)
+	addCrv(httpClient, fromAddress, forkRpcUrl)
+
+	return forkRpcUrl, forkResponse.SimulationFork.Id, privateKey
+}
+
+func addEth(httpClient *http.Client, fromAddress common.Address, forkRpcUrl string) {
 	params := make([]interface{}, 0)
 	addressesToFund := make([]string, 0)
 	addressesToFund = append(addressesToFund, fromAddress.Hex())
 
 	params = append(params, addressesToFund)
 	params = append(params, "0x3635c9adc5dea00000")
-	body, err = json.Marshal(interfaces.TenderlyAddBalanceRequest{
+	body, err := json.Marshal(interfaces.TenderlyAddBalanceRequest{
 		Id:      0,
 		JsonRPC: "2.0",
 		Method:  "tenderly_addBalance",
@@ -962,21 +985,108 @@ func createFork(chainId string) (string, string) {
 		log.Fatal(err)
 	}
 
-	r, err = http.NewRequest("POST", forkRpcUrl, bytes.NewBuffer(body))
+	r, err := http.NewRequest("POST", forkRpcUrl, bytes.NewBuffer(body))
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	r.Header.Add("Content-Type", "application/json")
 
-	res, err = httpClient.Do(r)
+	res, err := httpClient.Do(r)
 	if err != nil {
 		panic(err)
 	}
 
 	defer res.Body.Close()
+}
 
-	return forkRpcUrl, forkResponse.SimulationFork.Id
+func addCrv(httpClient *http.Client, fromAddress common.Address, forkRpcUrl string) {
+	params := make([]interface{}, 0)
+
+	params = append(params, utils.CRV.Hex())
+	params = append(params, fromAddress.Hex())
+	params = append(params, "0x204FCE5E3E25026110000000")
+	body, err := json.Marshal(interfaces.TenderlyAddBalanceRequest{
+		Id:      0,
+		JsonRPC: "2.0",
+		Method:  "tenderly_setErc20Balance",
+		Params:  params,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	r, err := http.NewRequest("POST", forkRpcUrl, bytes.NewBuffer(body))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	r.Header.Add("Content-Type", "application/json")
+
+	res, err := httpClient.Do(r)
+	if err != nil {
+		panic(err)
+	}
+
+	defer res.Body.Close()
+}
+
+func mineBlocks(httpClient *http.Client, forkRpcUrl string, nbBlocks int64) {
+	params := make([]interface{}, 0)
+
+	params = append(params, nbBlocks)
+	body, err := json.Marshal(interfaces.TenderlyAddBalanceRequest{
+		Id:      0,
+		JsonRPC: "2.0",
+		Method:  "evm_increaseBlocks",
+		Params:  params,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	r, err := http.NewRequest("POST", forkRpcUrl, bytes.NewBuffer(body))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	r.Header.Add("Content-Type", "application/json")
+
+	res, err := httpClient.Do(r)
+	if err != nil {
+		panic(err)
+	}
+
+	defer res.Body.Close()
+}
+
+func addTime(httpClient *http.Client, forkRpcUrl string, time int64) {
+	params := make([]interface{}, 0)
+
+	params = append(params, time)
+	body, err := json.Marshal(interfaces.TenderlyAddBalanceRequest{
+		Id:      0,
+		JsonRPC: "2.0",
+		Method:  "evm_increaseTime",
+		Params:  params,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	r, err := http.NewRequest("POST", forkRpcUrl, bytes.NewBuffer(body))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	r.Header.Add("Content-Type", "application/json")
+
+	res, err := httpClient.Do(r)
+	if err != nil {
+		panic(err)
+	}
+
+	defer res.Body.Close()
 }
 
 func deleteFork(forkId string) {
@@ -996,7 +1106,7 @@ func deleteFork(forkId string) {
 	defer res.Body.Close()
 }
 
-func sendTx(forkClient *ethclient.Client, to common.Address, data []byte) {
+func sendTx(forkClient *ethclient.Client, to common.Address, data []byte) error {
 	privateKey, err := crypto.HexToECDSA(utils.GoDotEnvVariable("FORK_PK"))
 	if err != nil {
 		log.Fatal(err)
@@ -1034,7 +1144,7 @@ func sendTx(forkClient *ethclient.Client, to common.Address, data []byte) {
 		log.Fatal(err)
 	}
 
-	forkClient.SendTransaction(context.Background(), signedTx)
+	return forkClient.SendTransaction(context.Background(), signedTx)
 }
 
 func readMapBool(path string) map[string]map[common.Address]bool {

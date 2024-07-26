@@ -4,14 +4,20 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
+	"main/contracts/erc20"
+	"main/contracts/escrow"
 	"main/contracts/voter"
 	"main/interfaces"
 	"main/utils"
 	"math/big"
+	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -29,6 +35,8 @@ const VOTES_PATH = "./data/votes.json"
 const OWNERSHIP = "ownership"
 const PARAMETER = "parameter"
 const votes_config = "./data/configs/votes-config.json"
+
+const BLOCK_BEFORE_SNAPSHOT = 10
 
 func FetchVotes(client *ethclient.Client, currentBlock uint64) {
 
@@ -192,6 +200,14 @@ func FetchVotes(client *ethclient.Client, currentBlock uint64) {
 	// Check if we can get missing ipfs description
 	start := len(votes) - 1
 	for i := start; i >= start-20; i-- {
+		if votes[i].Id.Cmp(big.NewInt(int64(810))) == 1 && len(votes[i].TenderlySimulationUrl) == 0 {
+			tenderlyUrl, err := getTenderlySimulation(votes[i])
+			if err == nil {
+				votes[i].TenderlySimulationUrl = tenderlyUrl
+			} else {
+				fmt.Println(votes[i].Id, err)
+			}
+		}
 		if len(votes[i].Description) == 0 {
 			votes[i].Description = utils.GetIpfs(votes[i].IpfsId)
 		}
@@ -201,6 +217,125 @@ func FetchVotes(client *ethclient.Client, currentBlock uint64) {
 
 	// Write config
 	utils.WriteConfig(config, currentBlock, votes_config)
+}
+
+func getTenderlySimulation(vote interfaces.Vote) (string, error) {
+	// Create the fork before the snapshot block
+	forkRpcUrl, forkId, _ := createFork("1", int64(vote.SnapshotBlock)-BLOCK_BEFORE_SNAPSHOT)
+
+	forkClient, err := ethclient.Dial(forkRpcUrl)
+	if err != nil {
+		return "", err
+	}
+
+	// Approve crv for vesting contract
+	abi, err := erc20.Erc20MetaData.GetAbi()
+	if err != nil {
+		return "", err
+	}
+
+	data, err := abi.Pack("approve", utils.CURVE_ESCROW_ADDRESS, utils.Mul(10000000000, 18))
+	if err != nil {
+		return "", err
+	}
+
+	if err := sendTx(forkClient, utils.CRV, data); err != nil {
+		return "", err
+	}
+
+	// Create the lock
+	abi, err = escrow.EscrowMetaData.GetAbi()
+	if err != nil {
+		return "", err
+	}
+
+	now := time.Now().Unix()
+	data, err = abi.Pack("create_lock", utils.Mul(10000000000, 18), big.NewInt(int64(uint64(now)+utils.WEEK_TO_SEC*50*4)))
+	if err != nil {
+		return "", err
+	}
+
+	if err := sendTx(forkClient, utils.CURVE_ESCROW_ADDRESS, data); err != nil {
+		return "", err
+	}
+
+	// Add some blocks
+	httpClient := &http.Client{}
+	mineBlocks(httpClient, forkRpcUrl, BLOCK_BEFORE_SNAPSHOT+1)
+
+	// Create vote and vote yes but default
+	abi, err = voter.VoterMetaData.GetAbi()
+	if err != nil {
+		return "", err
+	}
+
+	script, err := hex.DecodeString(vote.Script[2:])
+	if err != nil {
+		fmt.Println(vote.Script)
+		return "", err
+	}
+
+	data, err = abi.Pack("newVote", script, "")
+	if err != nil {
+		return "", err
+	}
+	if err := sendTx(forkClient, vote.Voter, data); err != nil {
+		return "", err
+	}
+
+	// Mine blocks to execute after
+	// 7200 blocks per day
+	// Mine one month blocks
+	mineBlocks(httpClient, forkRpcUrl, 7200*30)
+	addTime(httpClient, forkRpcUrl, now+(86400*30))
+
+	// Exec vote
+	abi, err = voter.VoterMetaData.GetAbi()
+	if err != nil {
+		return "", err
+	}
+
+	data, err = abi.Pack("executeVote", vote.Id)
+	if err != nil {
+		return "", err
+	}
+
+	if err := sendTx(forkClient, vote.Voter, data); err != nil {
+		return "", err
+	}
+
+	// Get tx list
+	r, err := http.NewRequest("GET", "https://api.tenderly.co/api/v1/account/"+utils.GoDotEnvVariable("TENDERLY_SLUG")+"/project/"+utils.GoDotEnvVariable("TENDERLY_PROJECT_SLUG")+"/fork/"+forkId+"/transactions?page=1&perPage=20&exclude_internal=true", nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	r.Header.Add("Content-Type", "application/json")
+	r.Header.Add("X-Access-Key", utils.GoDotEnvVariable("TENDERLY_ACCESS_KEY"))
+
+	httpClient = &http.Client{}
+	res, err := httpClient.Do(r)
+	if err != nil {
+		panic(err)
+	}
+
+	defer res.Body.Close()
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return "", err
+	}
+
+	txs := new(interfaces.TenderlyForkTxListResponse)
+	if err := json.Unmarshal(body, txs); err != nil {
+		return "", err
+	}
+
+	if len(txs.ForkTransactions) == 0 {
+		return "", errors.New("txs empty")
+	}
+
+	return "https://dashboard.tenderly.co/explorer/fork/" + forkId + "/simulation/" + txs.ForkTransactions[0].Id, nil
 }
 
 func readVotes() []interfaces.Vote {
