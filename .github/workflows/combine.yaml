@@ -40,16 +40,15 @@ jobs:
           go run ./main.go peg
           go run ./main.go votes
 
-      - run: |
+      - name: Commit and push changes to bribes repo
+        run: |
           git config --local user.email "actions@github.com"
           git config --local user.name "Automation"
-          git checkout main
-          git pull
-          git checkout ${{github.ref_name}}
-          git pull
+          git add .
+          git commit -m "Combine"
+          git pull --rebase
+          git merge -s ours origin/main
+          git push origin main
         shell: bash
         if: always()
-
-      - name: Commit and Push
-        uses: stefanzweifel/git-auto-commit-action@v5
 
