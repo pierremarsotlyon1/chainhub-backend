@@ -483,7 +483,11 @@ func estimatedWithSimulation(client *ethclient.Client, allPools []interfaces.Cur
 		}
 	} else {
 		// Use fork
-		forkRpcUrl, forkId, _ := createFork(FORK_CHAIN_ID[chain], 0)
+		forkRpcUrl, forkId, _, err := createFork(FORK_CHAIN_ID[chain], 0)
+		if err != nil {
+			fmt.Println(err)
+			return 0
+		}
 		defer deleteFork(forkId)
 
 		forkClient, err := ethclient.Dial(forkRpcUrl)
@@ -902,7 +906,7 @@ func manageTokens(coins []common.Address, coinsToManage []common.Address, allPoo
 	return results
 }
 
-func createFork(chainId string, blockNumber int64) (string, string, *ecdsa.PrivateKey) {
+func createFork(chainId string, blockNumber int64) (string, string, *ecdsa.PrivateKey, error) {
 	var forkRequest interfaces.TenderlyForkRequest
 
 	if blockNumber == 0 {
@@ -921,12 +925,12 @@ func createFork(chainId string, blockNumber int64) (string, string, *ecdsa.Priva
 	body, err := json.Marshal(forkRequest)
 
 	if err != nil {
-		log.Fatal(err)
+		return "", "", nil, err
 	}
 
 	r, err := http.NewRequest("POST", "https://api.tenderly.co/api/v1/account/"+utils.GoDotEnvVariable("TENDERLY_SLUG")+"/project/"+utils.GoDotEnvVariable("TENDERLY_PROJECT_SLUG")+"/fork", bytes.NewBuffer(body))
 	if err != nil {
-		log.Fatal(err)
+		return "", "", nil, err
 	}
 
 	r.Header.Add("Content-Type", "application/json")
@@ -935,7 +939,7 @@ func createFork(chainId string, blockNumber int64) (string, string, *ecdsa.Priva
 	httpClient := &http.Client{}
 	res, err := httpClient.Do(r)
 	if err != nil {
-		panic(err)
+		return "", "", nil, err
 	}
 
 	defer res.Body.Close()
@@ -943,7 +947,7 @@ func createFork(chainId string, blockNumber int64) (string, string, *ecdsa.Priva
 	forkResponse := &interfaces.TenderlyForkResponse{}
 	derr := json.NewDecoder(res.Body).Decode(forkResponse)
 	if derr != nil {
-		panic(derr)
+		return "", "", nil, err
 	}
 
 	forkRpcUrl := forkResponse.SimulationFork.RpcUrl
@@ -951,13 +955,13 @@ func createFork(chainId string, blockNumber int64) (string, string, *ecdsa.Priva
 	// Fund account
 	privateKey, err := crypto.HexToECDSA(utils.GoDotEnvVariable("FORK_PK"))
 	if err != nil {
-		log.Fatal(err)
+		return "", "", nil, err
 	}
 
 	publicKey := privateKey.Public()
 	publicKeyECDSA, ok := publicKey.(*ecdsa.PublicKey)
 	if !ok {
-		log.Fatal("error casting public key to ECDSA")
+		return "", "", nil, err
 	}
 
 	fromAddress := crypto.PubkeyToAddress(*publicKeyECDSA)
@@ -965,10 +969,10 @@ func createFork(chainId string, blockNumber int64) (string, string, *ecdsa.Priva
 	addEth(httpClient, fromAddress, forkRpcUrl)
 	addCrv(httpClient, fromAddress, forkRpcUrl)
 
-	return forkRpcUrl, forkResponse.SimulationFork.Id, privateKey
+	return forkRpcUrl, forkResponse.SimulationFork.Id, privateKey, nil
 }
 
-func addEth(httpClient *http.Client, fromAddress common.Address, forkRpcUrl string) {
+func addEth(httpClient *http.Client, fromAddress common.Address, forkRpcUrl string) error {
 	params := make([]interface{}, 0)
 	addressesToFund := make([]string, 0)
 	addressesToFund = append(addressesToFund, fromAddress.Hex())
@@ -982,25 +986,26 @@ func addEth(httpClient *http.Client, fromAddress common.Address, forkRpcUrl stri
 		Params:  params,
 	})
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	r, err := http.NewRequest("POST", forkRpcUrl, bytes.NewBuffer(body))
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	r.Header.Add("Content-Type", "application/json")
 
 	res, err := httpClient.Do(r)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	defer res.Body.Close()
+	return nil
 }
 
-func addCrv(httpClient *http.Client, fromAddress common.Address, forkRpcUrl string) {
+func addCrv(httpClient *http.Client, fromAddress common.Address, forkRpcUrl string) error {
 	params := make([]interface{}, 0)
 
 	params = append(params, utils.CRV.Hex())
@@ -1013,22 +1018,23 @@ func addCrv(httpClient *http.Client, fromAddress common.Address, forkRpcUrl stri
 		Params:  params,
 	})
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	r, err := http.NewRequest("POST", forkRpcUrl, bytes.NewBuffer(body))
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	r.Header.Add("Content-Type", "application/json")
 
 	res, err := httpClient.Do(r)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	defer res.Body.Close()
+	return nil
 }
 
 func mineBlocks(httpClient *http.Client, forkRpcUrl string, nbBlocks int64) error {

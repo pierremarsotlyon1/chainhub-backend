@@ -221,7 +221,10 @@ func FetchVotes(client *ethclient.Client, currentBlock uint64) {
 
 func getTenderlySimulation(vote interfaces.Vote) (string, error) {
 	// Create the fork before the snapshot block
-	forkRpcUrl, forkId, _ := createFork("1", int64(vote.SnapshotBlock)-BLOCK_BEFORE_SNAPSHOT)
+	forkRpcUrl, forkId, _, err := createFork("1", int64(vote.SnapshotBlock)-BLOCK_BEFORE_SNAPSHOT)
+	if err != nil {
+		return "", err
+	}
 
 	forkClient, err := ethclient.Dial(forkRpcUrl)
 	if err != nil {
