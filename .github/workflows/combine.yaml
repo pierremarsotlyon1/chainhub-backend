@@ -10,6 +10,11 @@ env:
   ALCHEMY_APIKEY_2: ${{ secrets.ALCHEMY_APIKEY_2 }}
   INFURA_APIKEY: ${{ secrets.INFURA_APIKEY }}
   ALCHEMY_APIKEY_3: ${{ secrets.ALCHEMY_APIKEY_3 }}
+  TENDERLY_NODE: ${{ secrets.TENDERLY_NODE }}
+  FORK_PK: ${{ secrets.FORK_PK }}
+  TENDERLY_SLUG: ${{ secrets.TENDERLY_SLUG }}
+  TENDERLY_PROJECT_SLUG: ${{ secrets.TENDERLY_PROJECT_SLUG }}
+  TENDERLY_ACCESS_KEY: ${{ secrets.TENDERLY_ACCESS_KEY }}
 
 jobs:
   build: # make sure build/ci work properly
