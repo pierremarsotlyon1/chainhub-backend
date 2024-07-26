@@ -317,9 +317,15 @@ func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, allPools []inte
 						}
 
 						if coinPool.UsdPrice == nil {
-							coinPool.UsdPrice = 0
+							coinPool.UsdPrice = 0.0
 						}
-						amount := coinPool.UsdPrice.(float64) * utils.Quo(balance, uint64(decimals))
+
+						usdPrice, ok := coinPool.UsdPrice.(float64)
+						if !ok {
+							usdPrice = 0.0
+						}
+
+						amount := usdPrice * utils.Quo(balance, uint64(decimals))
 						totalFees += amount
 						feesPerToken[coin.Hex()] = amount
 						break

@@ -25,17 +25,3 @@ jobs:
 
       - run: go run ./main.go votes
 
-      - name: Update from main
-        run: |
-          git config --local user.email "actions@github.com"
-          git config --local user.name "Automation"
-          git checkout main
-          git pull
-          git checkout ${{github.ref_name}}
-          git pull
-        shell: bash
-        if: always()
-
-      - name: Commit and Push
-        uses: stefanzweifel/git-auto-commit-action@v5
-
