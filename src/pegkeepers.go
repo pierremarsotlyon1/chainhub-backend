@@ -46,12 +46,10 @@ func FetchPegKeepers(client *ethclient.Client, currentBlock uint64, currentBlock
 
 	// DATA
 	pegKeepers := readPegKeepers()
-	volumes := readPegKeepersVolume()
 	fees := readPegKeepersFees()
 
 	// Run channels
 	pegkeeperChan := make(chan interfaces.PegKeeper)
-	tokenExchangeChan := make(chan interfaces.TokenExchange)
 	feesChan := make(chan interfaces.PegKeeperFee)
 
 	var wgDataChan sync.WaitGroup
@@ -80,16 +78,6 @@ func FetchPegKeepers(client *ethclient.Client, currentBlock uint64, currentBlock
 		}
 	}()
 
-	var wgTokenExchangeChan sync.WaitGroup
-	wgTokenExchangeChan.Add(1)
-
-	go func() {
-		defer wgTokenExchangeChan.Done()
-		for data := range tokenExchangeChan {
-			volumes = append(volumes, data)
-		}
-	}()
-
 	var wgFeeChan sync.WaitGroup
 	wgFeeChan.Add(1)
 
@@ -104,33 +92,19 @@ func FetchPegKeepers(client *ethclient.Client, currentBlock uint64, currentBlock
 	var wgCollectData sync.WaitGroup
 	for _, pegKeeperAddress := range pegKeeperAddresses {
 		wgCollectData.Add(1)
-		collectData(&wgCollectData, tokenExchangeChan, feesChan, pegkeeperChan, client, pegKeeperAddress, opts, config)
+		collectData(&wgCollectData, feesChan, pegkeeperChan, client, pegKeeperAddress, opts, config)
 	}
 
 	wgCollectData.Wait()
 	close(pegkeeperChan)
-	close(tokenExchangeChan)
 	close(feesChan)
 
 	wgDataChan.Wait()
-	wgTokenExchangeChan.Wait()
 	wgFeeChan.Wait()
 
 	// Reset pegkeeper totals
 	for i := range pegKeepers {
-		pegKeepers[i].VolumeOverLastDay = 0
 		pegKeepers[i].FeesCollected = 0
-	}
-
-	// Compute volumes
-	previousDay := currentBlockTImestamp - utils.DAY_TO_SEC
-	for _, volume := range volumes {
-		for i, pegKeeper := range pegKeepers {
-			if strings.EqualFold(volume.PegKeeperAddress.Hex(), pegKeeper.Address.Hex()) && volume.BlockTimestamp > previousDay {
-				pegKeepers[i].VolumeOverLastDay += (volume.Amount * volume.LpPrice)
-				break
-			}
-		}
 	}
 
 	// Compute fees
@@ -144,7 +118,6 @@ func FetchPegKeepers(client *ethclient.Client, currentBlock uint64, currentBlock
 	}
 
 	writePegKeepers(pegKeepers)
-	writePegKeepersVolume(volumes)
 	writePegKeepersFees(fees)
 
 	// Write config
@@ -208,7 +181,7 @@ func getPegKeeperAddresses(client *ethclient.Client) ([]common.Address, error) {
 	return pegKeeperAddressesArray, nil
 }
 
-func collectData(wgCollectData *sync.WaitGroup, tokenExchangeChan chan interfaces.TokenExchange, feesChan chan interfaces.PegKeeperFee, dataChan chan interfaces.PegKeeper, client *ethclient.Client, pegKeeperAddress common.Address, opts *bind.CallOpts, config interfaces.Config) {
+func collectData(wgCollectData *sync.WaitGroup, feesChan chan interfaces.PegKeeperFee, dataChan chan interfaces.PegKeeper, client *ethclient.Client, pegKeeperAddress common.Address, opts *bind.CallOpts, config interfaces.Config) {
 	defer wgCollectData.Done()
 	pegKeeperContract, err := pegKeeper.NewPegKeeper(pegKeeperAddress, client)
 	if err != nil {
@@ -277,18 +250,16 @@ func collectData(wgCollectData *sync.WaitGroup, tokenExchangeChan chan interface
 	}
 
 	// Fetch volume
-	getVolume(tokenExchangeChan, client, pegKeeperAddress, poolAddress, opts, config)
 	getFees(feesChan, client, pegKeeperAddress, opts, config)
 
 	dataChan <- interfaces.PegKeeper{
-		Address:           pegKeeperAddress,
-		PoolAddress:       poolAddress,
-		Name:              name,
-		Tvl:               tvl,
-		Debt:              utils.Quo(debt, 18),
-		FeesCollected:     0,
-		VolumeOverLastDay: 0,
-		FeesPending:       utils.Quo(currentProfit, 18),
+		Address:       pegKeeperAddress,
+		PoolAddress:   poolAddress,
+		Name:          name,
+		Tvl:           tvl,
+		Debt:          utils.Quo(debt, 18),
+		FeesCollected: 0,
+		FeesPending:   utils.Quo(currentProfit, 18),
 	}
 }
 
@@ -447,36 +418,6 @@ func readPegKeepers() []interfaces.PegKeeper {
 	}
 
 	return pegkepeers
-}
-
-func writePegKeepersVolume(tokenExchanges []interfaces.TokenExchange) {
-	file, err := json.Marshal(tokenExchanges)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if err := os.WriteFile(PEGKEEPER_VOLUME_DATA, file, 0644); err != nil {
-		log.Fatal(err)
-	}
-}
-
-func readPegKeepersVolume() []interfaces.TokenExchange {
-
-	if !utils.FileExists(PEGKEEPER_VOLUME_DATA) {
-		return make([]interfaces.TokenExchange, 0)
-	}
-
-	file, err := os.ReadFile(PEGKEEPER_VOLUME_DATA)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	volumes := make([]interfaces.TokenExchange, 0)
-	if err := json.Unmarshal([]byte(file), &volumes); err != nil {
-		log.Fatal(err)
-	}
-
-	return volumes
 }
 
 func writePegKeepersFees(fees []interfaces.PegKeeperFee) {

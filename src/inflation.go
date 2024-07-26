@@ -175,7 +175,7 @@ func computeInflation(inflationData interfaces.InflationData, vestingClaims []in
 		found := false
 		ts := utils.GetStartOfMonth(int64(claims.Timestamp))
 
-		amountUSD := utils.Quo(claims.Amount, uint64(claims.TokenDecimals)) * claims.Price
+		amountUSD := claims.AmountUSD
 		for i := range inflationPerMonth {
 			if inflationPerMonth[i].Timestamp == ts {
 				inflationPerMonth[i].BountiesIncomeAmountUSD += amountUSD

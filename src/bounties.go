@@ -25,7 +25,6 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
@@ -81,6 +80,16 @@ func FetchBounties(client *ethclient.Client, currentBlock uint64, alchemyRpcUrl 
 
 	allClaimed = append(allClaimed, previousClaims...)
 
+	/*for i, _ := range allClaimed {
+		allClaimed[i].ProtocolName = getNameBreakdown(allClaimed[i].Contract)
+		allClaimed[i].AmountUSD = allClaimed[i].Price * utils.Quo(allClaimed[i].Amount, uint64(allClaimed[i].TokenDecimals))
+	}*/
+
+	/*for i, _ := range allClaimed {
+		allClaimed[i].CommentTmp = allClaimed[i].Comment
+		allClaimed[i].TimestampTmp = allClaimed[i].Timestamp
+	}*/
+
 	fmt.Println("Fetching votium")
 	allClaimed = append(allClaimed, fetchVotium(client, curvePools, currentBlock, config)...)
 
@@ -115,22 +124,13 @@ func computeBountiesStats(allClaimed []interfaces.BountyClaimed) {
 
 	allClaimedWithPrice := make([]interfaces.BountyClaimed, 0)
 	now := uint64(time.Now().Unix())
-	for i, bounty := range allClaimed {
+	for _, bounty := range allClaimed {
 
-		amount, _ := new(big.Float).Quo(big.NewFloat(0).SetInt(bounty.Amount), big.NewFloat(0).SetInt(math.BigPow(10, int64(bounty.TokenDecimals)))).Float64()
-
-		if bounty.Price == 0 {
-			allClaimed[i].Price = utils.GetHistoricalPriceTokenPrice(bounty.TokenReward, "ethereum", now)
-			bounty.Price = allClaimed[i].Price
-		}
-
-		bountyAmount := (amount * bounty.Price)
-
-		totalBountiesUSD += bountyAmount
+		totalBountiesUSD += bounty.AmountUSD
 		if isVlCVX(bounty) {
-			totalVlCVXBountiesUSD += bountyAmount
+			totalVlCVXBountiesUSD += bounty.AmountUSD
 		} else {
-			totalVeCRVBountiesUSD += bountyAmount
+			totalVeCRVBountiesUSD += bounty.AmountUSD
 		}
 
 		allClaimedWithPrice = append(allClaimedWithPrice, bounty)
@@ -541,15 +541,10 @@ func addClaim(client *ethclient.Client, curvePools []interfaces.CurvePool, bount
 	}
 
 	bountiesClaimed = append(bountiesClaimed, interfaces.BountyClaimed{
-		Contract:      contract,
-		TokenReward:   rewardToken,
-		Amount:        amount,
-		BlockNumber:   blockNumber,
-		Timestamp:     timestamp,
-		TokenDecimals: decimals,
-		Tx:            txHash,
-		Price:         price,
-		Comment:       comment,
+		ProtocolName: getNameBreakdown(contract),
+		Timestamp:    timestamp,
+		AmountUSD:    price * utils.Quo(amount, uint64(decimals)),
+		Comment:      comment,
 	})
 
 	return bountiesClaimed
@@ -580,27 +575,17 @@ func addVotiumClaim(client *ethclient.Client, bountiesClaimed []interfaces.Bount
 	realAmount := new(big.Int).Quo(amount, big.NewInt(2))
 
 	bountiesClaimed = append(bountiesClaimed, interfaces.BountyClaimed{
-		Contract:      contract,
-		TokenReward:   rewardToken,
-		Amount:        realAmount,
-		BlockNumber:   blockNumber,
-		Timestamp:     timestamp,
-		TokenDecimals: decimals,
-		Tx:            txHash,
-		Price:         historicalPrice,
-		Comment:       comment,
+		ProtocolName: getNameBreakdown(contract),
+		Timestamp:    timestamp,
+		AmountUSD:    historicalPrice * utils.Quo(realAmount, uint64(decimals)),
+		Comment:      comment,
 	})
 
 	bountiesClaimed = append(bountiesClaimed, interfaces.BountyClaimed{
-		Contract:      contract,
-		TokenReward:   rewardToken,
-		Amount:        realAmount,
-		BlockNumber:   blockNumber,
-		Timestamp:     nextTimestamp,
-		TokenDecimals: decimals,
-		Tx:            txHash,
-		Price:         nextHistoricalPrice,
-		Comment:       comment,
+		ProtocolName: getNameBreakdown(contract),
+		Timestamp:    nextTimestamp,
+		AmountUSD:    nextHistoricalPrice * utils.Quo(realAmount, uint64(decimals)),
+		Comment:      comment,
 	})
 
 	return bountiesClaimed
@@ -616,8 +601,7 @@ func generateDaysData(allClaimed []interfaces.BountyClaimed, start uint64, inter
 
 	for _, claimed := range allClaimed {
 
-		amount, _ := new(big.Float).Quo(big.NewFloat(0).SetInt(claimed.Amount), big.NewFloat(0).SetInt(math.BigPow(10, int64(claimed.TokenDecimals)))).Float64()
-		bountyDollarAmount := (amount * claimed.Price)
+		bountyDollarAmount := claimed.AmountUSD
 		currentTotalBountyDollarAmount += bountyDollarAmount
 
 		if claimed.Timestamp < start {
@@ -642,7 +626,7 @@ func generateDaysData(allClaimed []interfaces.BountyClaimed, start uint64, inter
 		}
 
 		if !vlCVX {
-			name := getNameBreakdown(claimed.Contract)
+			name := claimed.ProtocolName
 
 			found := false
 			for i := 0; i < len(breakdown); i++ {
