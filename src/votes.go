@@ -282,9 +282,11 @@ func getTenderlySimulation(vote interfaces.Vote) (string, error) {
 
 	data, err = abi.Pack("newVote", script, "")
 	if err != nil {
+		fmt.Println("err new vote pack data")
 		return "", err
 	}
 	if err := sendTx(forkClient, vote.Voter, data); err != nil {
+		fmt.Println("err new vote")
 		return "", err
 	}
 
@@ -292,9 +294,11 @@ func getTenderlySimulation(vote interfaces.Vote) (string, error) {
 	// 7200 blocks per day
 	// Mine one month blocks
 	if err = mineBlocks(httpClient, forkRpcUrl, 7200*30); err != nil {
+		fmt.Println("err mine blocks")
 		return "", err
 	}
 	if err = addTime(httpClient, forkRpcUrl, now+(86400*30)); err != nil {
+		fmt.Println("err add time")
 		return "", err
 	}
 
@@ -325,6 +329,7 @@ func getTenderlySimulation(vote interfaces.Vote) (string, error) {
 	httpClient = &http.Client{}
 	res, err := httpClient.Do(r)
 	if err != nil {
+		fmt.Println("err http get fork txs")
 		return "", err
 	}
 
@@ -332,11 +337,13 @@ func getTenderlySimulation(vote interfaces.Vote) (string, error) {
 
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
+		fmt.Println("err read http get fork txs", res.Body)
 		return "", err
 	}
 
 	txs := new(interfaces.TenderlyForkTxListResponse)
 	if err := json.Unmarshal(body, txs); err != nil {
+		fmt.Println("err unmarshal http get fork txs", res.Body)
 		return "", err
 	}
 
