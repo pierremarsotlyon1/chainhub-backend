@@ -480,12 +480,12 @@ func estimatedWithSimulation(client *ethclient.Client, allPools []interfaces.Cur
 		var success bool
 		balance, success = new(big.Int).SetString(firstResult.Trace[0].DecodedOutput[0].Value.(string), 10)
 		if !success {
-			log.Fatal(err)
+			balance = big.NewInt(0)
 		}
 
 		newBalance, success = new(big.Int).SetString(lastResult.Trace[0].DecodedOutput[0].Value.(string), 10)
 		if !success {
-			log.Fatal(err)
+			newBalance = big.NewInt(0)
 		}
 	} else {
 		// Use fork
@@ -509,6 +509,10 @@ func estimatedWithSimulation(client *ethclient.Client, allPools []interfaces.Cur
 		}
 
 		balance, err = targetTokenContract.BalanceOf(nil, FEE_RECEIVERS[chain])
+		if err != nil {
+			fmt.Println(err)
+			balance = big.NewInt(0)
+		}
 
 		to := POOL_OWNERS[chain]
 
@@ -521,6 +525,10 @@ func estimatedWithSimulation(client *ethclient.Client, allPools []interfaces.Cur
 		}
 
 		newBalance, err = targetTokenContract.BalanceOf(nil, FEE_RECEIVERS[chain])
+		if err != nil {
+			fmt.Println(err)
+			newBalance = big.NewInt(0)
+		}
 	}
 
 	return utils.Quo(new(big.Int).Sub(newBalance, balance), TARKET_TOKEN_DECIMALS[chain])
