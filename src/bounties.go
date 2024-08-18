@@ -43,6 +43,7 @@ var VOTEMARKET_ADDRESSES_V1 = []common.Address{
 var VOTEMARKET_ADDRESSES_V2 = []common.Address{
 	common.HexToAddress("0x0000000BE1d98523B5469AfF51A1e7b4891c6225"),
 	common.HexToAddress("0x0000000895cB182E6f983eb4D8b4E0Aa0B31Ae4c"),
+	common.HexToAddress("0x000000073D065Fc33a3050C2d0E19C393a5699ba"),
 }
 
 var QUEST_ADDRESSES = []common.Address{
