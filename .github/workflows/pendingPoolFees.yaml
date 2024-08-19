@@ -14,6 +14,7 @@ env:
   TENDERLY_SLUG: ${{ secrets.TENDERLY_SLUG }}
   TENDERLY_PROJECT_SLUG: ${{ secrets.TENDERLY_PROJECT_SLUG }}
   TENDERLY_ACCESS_KEY: ${{ secrets.TENDERLY_ACCESS_KEY }}
+  ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
 
 jobs:
   build: # make sure build/ci work properly

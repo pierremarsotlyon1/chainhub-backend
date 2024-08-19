@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -606,8 +607,20 @@ func getPoolsWithWithdrawAdminFee(client *ethclient.Client, pools []interfaces.C
 		}
 
 		poolAddress := common.HexToAddress(pool.Address)
-		_, exists = poolWithWithdrawAdminFee[chain][poolAddress]
-		if exists {
+		haveIt, exists := poolWithWithdrawAdminFee[chain][poolAddress]
+		if exists && haveIt {
+			continue
+		}
+
+		if strings.EqualFold(chain, "ethereum") {
+			haveIt, _ = utils.ContainsWithdrawAdminFees(poolAddress.Hex())
+			time.Sleep(200 * time.Millisecond)
+			if haveIt {
+				poolWithWithdrawAdminFee[chain][poolAddress] = true
+			}
+		}
+
+		if haveIt {
 			continue
 		}
 
