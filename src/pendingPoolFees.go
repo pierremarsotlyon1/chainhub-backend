@@ -614,7 +614,7 @@ func getPoolsWithWithdrawAdminFee(client *ethclient.Client, pools []interfaces.C
 
 		if strings.EqualFold(chain, "ethereum") {
 			haveIt, _ = utils.ContainsWithdrawAdminFees(poolAddress.Hex())
-			time.Sleep(200 * time.Millisecond)
+			time.Sleep(1 * time.Second)
 			if haveIt {
 				poolWithWithdrawAdminFee[chain][poolAddress] = true
 			}
