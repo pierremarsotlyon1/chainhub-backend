@@ -608,7 +608,8 @@ func getPoolsWithWithdrawAdminFee(client *ethclient.Client, pools []interfaces.C
 
 		poolAddress := common.HexToAddress(pool.Address)
 		haveIt, exists := poolWithWithdrawAdminFee[chain][poolAddress]
-		if exists && haveIt {
+
+		if exists {
 			continue
 		}
 
@@ -626,7 +627,8 @@ func getPoolsWithWithdrawAdminFee(client *ethclient.Client, pools []interfaces.C
 
 		bytecode, err := client.CodeAt(context.Background(), poolAddress, nil) // nil pour le dernier bloc connu
 		if err != nil {
-			log.Fatalf("Erreur lors de la récupération du bytecode : %s", err)
+			fmt.Println(err)
+			continue
 		}
 
 		poolWithWithdrawAdminFee[chain][poolAddress] = strings.Contains(common.Bytes2Hex(bytecode), selector)
