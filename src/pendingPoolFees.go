@@ -31,6 +31,7 @@ const (
 	functionSignature                  = "withdraw_admin_fees()"
 	PENDING_POOL_FEES_DATA             = "./data/pendingPoolFees/data.json"
 	POOL_WITH_WITHDRAW_ADMIN_FEES_DATA = "./data/pendingPoolFees/pool-with-withdraw-admin-fees.json"
+	POOL_WITH_CLAIM_ADMIN_FEES_DATA    = "./data/pendingPoolFees/pool-with-claim-admin-fees.json"
 	BURNERS_FOR_TOKEN_DATA             = "./data/pendingPoolFees/burnes-for-tokens.json"
 	BURNERS_DATA                       = "./data/pendingPoolFees/burners.json"
 	COWSWAP_FEES_PER_TOKEN_PATH        = "./data/pendingPoolFees/cowswap-fees-per-token"
@@ -294,68 +295,46 @@ func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, allPools []inte
 			continue
 		}
 
-		quoteResp, err := quote(cowswapChain, coin, balance)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-
-		if len(quoteResp.Quote.BuyAmount) == 0 {
-			for _, pool := range allPools {
-				found := false
-				for _, coinPool := range pool.Coins {
-					if strings.EqualFold(coin.Hex(), coinPool.Address) {
-						found = true
-
-						erc20Contract, err := erc20.NewErc20(coin, client)
-						if err != nil {
-							break
-						}
-
-						decimals, err := erc20Contract.Decimals(nil)
-						if err != nil {
-							break
-						}
-
-						if coinPool.UsdPrice == nil {
-							coinPool.UsdPrice = 0.0
-						}
-
-						usdPrice, ok := coinPool.UsdPrice.(float64)
-						if !ok {
-							usdPrice = 0.0
-						}
-
-						amount := usdPrice * utils.Quo(balance, uint64(decimals))
-						totalFees += amount
-						feesPerToken[coin.Hex()] = amount
-						break
-					}
+		for _, pool := range allPools {
+			found := false
+			for _, coinPool := range pool.Coins {
+				if !strings.EqualFold(coin.Hex(), coinPool.Address) {
+					continue
 				}
 
-				if found {
+				erc20Contract, err := erc20.NewErc20(coin, client)
+				if err != nil {
 					break
 				}
-			}
-			continue
-		} else {
-			bigIntValue := new(big.Int)
 
-			// Convertir la chaîne de caractères en big.Int
-			bigIntValue, success := bigIntValue.SetString(quoteResp.Quote.BuyAmount, 10)
-			if !success {
-				fmt.Println("Erreur de conversion de la chaîne en big.Int")
-				continue
+				decimals, err := erc20Contract.Decimals(nil)
+				if err != nil {
+					break
+				}
+
+				if coinPool.UsdPrice == nil {
+					coinPool.UsdPrice = 0.0
+				}
+
+				usdPrice, ok := coinPool.UsdPrice.(float64)
+				if !ok {
+					usdPrice = 0.0
+				}
+
+				amount := usdPrice * utils.Quo(balance, uint64(decimals))
+				totalFees += amount
+				feesPerToken[coin.Hex()] = amount
+				found = true
+				break
 			}
 
-			amount := utils.Quo(bigIntValue, 18)
-			totalFees += amount
-			feesPerToken[coin.Hex()] = amount
+			if found {
+				break
+			}
 		}
 	}
 
 	writeMapFees(feesPerToken, COWSWAP_FEES_PER_TOKEN_PATH+"-"+chain+".json")
-	fmt.Println("totalFees", totalFees)
 	return totalFees
 }
 
@@ -595,12 +574,14 @@ func fetchLastDistribution(client *ethclient.Client, currentBlock uint64, lastBl
 func getPoolsWithWithdrawAdminFee(client *ethclient.Client, pools []interfaces.CurvePool, chain string) []common.Address {
 
 	poolWithWithdrawAdminFee := readMapBool(POOL_WITH_WITHDRAW_ADMIN_FEES_DATA)
+	poolWithClaimAdminFee := readMapBool(POOL_WITH_CLAIM_ADMIN_FEES_DATA)
 
 	// Function selector
 	selector := crypto.Keccak256Hash([]byte(functionSignature)).Hex()[2:10]
 
 	for _, pool := range pools {
 
+		// Withdraw
 		_, exists := poolWithWithdrawAdminFee[chain]
 		if !exists {
 			poolWithWithdrawAdminFee[chain] = make(map[common.Address]bool)
@@ -608,33 +589,68 @@ func getPoolsWithWithdrawAdminFee(client *ethclient.Client, pools []interfaces.C
 
 		poolAddress := common.HexToAddress(pool.Address)
 		haveIt, exists := poolWithWithdrawAdminFee[chain][poolAddress]
+		abi := ""
 
-		if exists {
-			continue
-		}
+		if !exists {
+			if strings.EqualFold(chain, "ethereum") {
+				if len(abi) == 0 {
+					_abi, err := utils.GetEtherscanAbi(poolAddress.Hex())
+					if err == nil {
+						abi = _abi
+					}
+				}
+				haveIt, _ = utils.ContainsWithdrawAdminFees(abi)
+				time.Sleep(1 * time.Second)
+				if haveIt {
+					poolWithWithdrawAdminFee[chain][poolAddress] = true
+				}
+			}
 
-		if strings.EqualFold(chain, "ethereum") {
-			haveIt, _ = utils.ContainsWithdrawAdminFees(poolAddress.Hex())
-			time.Sleep(1 * time.Second)
-			if haveIt {
-				poolWithWithdrawAdminFee[chain][poolAddress] = true
+			if !haveIt {
+				bytecode, err := client.CodeAt(context.Background(), poolAddress, nil) // nil pour le dernier bloc connu
+				if err != nil {
+					fmt.Println(err)
+				} else {
+					poolWithWithdrawAdminFee[chain][poolAddress] = strings.Contains(common.Bytes2Hex(bytecode), selector)
+				}
 			}
 		}
 
-		if haveIt {
-			continue
+		// Claim
+		_, exists = poolWithClaimAdminFee[chain]
+		if !exists {
+			poolWithClaimAdminFee[chain] = make(map[common.Address]bool)
 		}
 
-		bytecode, err := client.CodeAt(context.Background(), poolAddress, nil) // nil pour le dernier bloc connu
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
+		haveIt, exists = poolWithClaimAdminFee[chain][poolAddress]
+		if !exists {
+			if strings.EqualFold(chain, "ethereum") {
+				if len(abi) == 0 {
+					_abi, err := utils.GetEtherscanAbi(poolAddress.Hex())
+					if err == nil {
+						abi = _abi
+					}
+				}
+				haveIt, _ = utils.ContainsClaimAdminFees(abi)
+				time.Sleep(1 * time.Second)
+				if haveIt {
+					poolWithClaimAdminFee[chain][poolAddress] = true
+				}
+			}
 
-		poolWithWithdrawAdminFee[chain][poolAddress] = strings.Contains(common.Bytes2Hex(bytecode), selector)
+			if !haveIt {
+				bytecode, err := client.CodeAt(context.Background(), poolAddress, nil) // nil pour le dernier bloc connu
+				if err != nil {
+					fmt.Println(err)
+				} else {
+					poolWithClaimAdminFee[chain][poolAddress] = strings.Contains(common.Bytes2Hex(bytecode), selector)
+				}
+			}
+		}
 	}
 
 	writeMapBol(poolWithWithdrawAdminFee, POOL_WITH_WITHDRAW_ADMIN_FEES_DATA)
+	writeMapBol(poolWithClaimAdminFee, POOL_WITH_CLAIM_ADMIN_FEES_DATA)
 
 	response := make([]common.Address, 0)
 	for poolAddress, value := range poolWithWithdrawAdminFee[chain] {
