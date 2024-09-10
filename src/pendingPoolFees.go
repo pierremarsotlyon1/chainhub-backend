@@ -28,7 +28,8 @@ import (
 )
 
 const (
-	functionSignature                  = "withdraw_admin_fees()"
+	withdrawAdminFeesFunctionSignature = "withdraw_admin_fees()"
+	claimAdminFeesFunctionSignature    = "claim_admin_fees()"
 	PENDING_POOL_FEES_DATA             = "./data/pendingPoolFees/data.json"
 	POOL_WITH_WITHDRAW_ADMIN_FEES_DATA = "./data/pendingPoolFees/pool-with-withdraw-admin-fees.json"
 	POOL_WITH_CLAIM_ADMIN_FEES_DATA    = "./data/pendingPoolFees/pool-with-claim-admin-fees.json"
@@ -576,8 +577,9 @@ func getPoolsWithWithdrawAdminFee(client *ethclient.Client, pools []interfaces.C
 	poolWithWithdrawAdminFee := readMapBool(POOL_WITH_WITHDRAW_ADMIN_FEES_DATA)
 	poolWithClaimAdminFee := readMapBool(POOL_WITH_CLAIM_ADMIN_FEES_DATA)
 
-	// Function selector
-	selector := crypto.Keccak256Hash([]byte(functionSignature)).Hex()[2:10]
+	// Function withdrawAdminFeesSelector
+	withdrawAdminFeesSelector := crypto.Keccak256Hash([]byte(withdrawAdminFeesFunctionSignature)).Hex()[2:10]
+	claimAdminFeesSelector := crypto.Keccak256Hash([]byte(claimAdminFeesFunctionSignature)).Hex()[2:10]
 
 	for _, pool := range pools {
 
@@ -611,7 +613,7 @@ func getPoolsWithWithdrawAdminFee(client *ethclient.Client, pools []interfaces.C
 				if err != nil {
 					fmt.Println(err)
 				} else {
-					poolWithWithdrawAdminFee[chain][poolAddress] = strings.Contains(common.Bytes2Hex(bytecode), selector)
+					poolWithWithdrawAdminFee[chain][poolAddress] = strings.Contains(common.Bytes2Hex(bytecode), withdrawAdminFeesSelector)
 				}
 			}
 		}
@@ -643,7 +645,7 @@ func getPoolsWithWithdrawAdminFee(client *ethclient.Client, pools []interfaces.C
 				if err != nil {
 					fmt.Println(err)
 				} else {
-					poolWithClaimAdminFee[chain][poolAddress] = strings.Contains(common.Bytes2Hex(bytecode), selector)
+					poolWithClaimAdminFee[chain][poolAddress] = strings.Contains(common.Bytes2Hex(bytecode), claimAdminFeesSelector)
 				}
 			}
 		}
