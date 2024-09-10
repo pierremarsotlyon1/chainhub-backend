@@ -4,6 +4,7 @@ type Coin struct {
 	Address  string      `json:"address"`
 	Symbol   string      `json:"symbol"`
 	UsdPrice interface{} `json:"usdPrice"`
+	Decimals interface{} `json:"decimals"`
 }
 
 type CurvePool struct {
