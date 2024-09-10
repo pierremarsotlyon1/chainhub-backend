@@ -17,6 +17,7 @@ import (
 	"math/big"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -303,14 +304,34 @@ func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, allPools []inte
 					continue
 				}
 
-				erc20Contract, err := erc20.NewErc20(coin, client)
-				if err != nil {
-					break
+				decimals := -1
+				if coinPool.Decimals != nil {
+					_decimals, ok := coinPool.Decimals.(string)
+					if ok {
+						d, err := strconv.Atoi(_decimals)
+						if err == nil {
+							decimals = d
+						}
+					} else {
+						_decimals, ok := coinPool.Decimals.(int)
+						if ok {
+							decimals = _decimals
+						}
+					}
 				}
 
-				decimals, err := erc20Contract.Decimals(nil)
-				if err != nil {
-					break
+				if decimals == -1 {
+					erc20Contract, err := erc20.NewErc20(coin, client)
+					if err != nil {
+						break
+					}
+
+					d, err := erc20Contract.Decimals(nil)
+					if err != nil {
+						break
+					}
+
+					decimals = int(d)
 				}
 
 				if coinPool.UsdPrice == nil {

@@ -21,9 +21,9 @@ func GetEtherscanAbi(contractAddress string) (string, error) {
 }
 
 func ContainsWithdrawAdminFees(abi string) (bool, error) {
-	return strings.Contains(abi, "withdraw_admin_fees"), nil
+	return strings.Contains(abi, "withdraw_admin_fees()"), nil
 }
 
 func ContainsClaimAdminFees(abi string) (bool, error) {
-	return strings.Contains(abi, "claim_admin_fees"), nil
+	return strings.Contains(abi, "claim_admin_fees()"), nil
 }
