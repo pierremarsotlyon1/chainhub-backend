@@ -297,7 +297,8 @@ func getTenderlySimulation(vote interfaces.Vote) (string, error) {
 		fmt.Println("err mine blocks")
 		return "", err
 	}
-	if err = addTime(httpClient, forkRpcUrl, now+(86400*30)); err != nil {
+
+	if err = addTime(httpClient, forkRpcUrl, (int64(vote.EndDate)-now)+24); err != nil {
 		fmt.Println("err add time")
 		return "", err
 	}
