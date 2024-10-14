@@ -25,7 +25,7 @@ type Gauge struct {
 	PendingFees       float64             `json:"pendingFees"`
 	AmountStakedUSD   float64             `json:"amountStakedUSD"`
 
-	WorkingSupply       float64 `json:"workingSupply"`
-	VirtualPrice        float64 `json:"virtualPrice"`
-	CanCalculateInTheUI bool    `json:"canCalculateInTheUI"`
+	WorkingSupply       float64     `json:"workingSupply"`
+	VirtualPrice        interface{} `json:"virtualPrice"`
+	CanCalculateInTheUI bool        `json:"canCalculateInTheUI"`
 }
