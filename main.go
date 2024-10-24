@@ -25,7 +25,7 @@ func main() {
 
 	functionToExecute := argsWithoutProg[0]
 
-	alchemyApiKey := utils.GoDotEnvVariable("ALCHEMY_APIKEY")
+	alchemyApiKey := utils.GoDotEnvVariable("ALCHEMY_APIKEY_2")
 
 	if len(argsWithoutProg) > 1 {
 		alchemyApiKey = utils.GoDotEnvVariable(argsWithoutProg[1])
