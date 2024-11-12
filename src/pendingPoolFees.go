@@ -6,14 +6,16 @@ import (
 	"crypto/ecdsa"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
-	"main/contracts/curvePoolFactoryV2"
+	"main/contracts/curvePoolUtils"
+	"main/contracts/curvePoolWithOwner"
 	"main/contracts/erc20"
 	"main/contracts/feeCollector"
+	"main/contracts/multicall"
 	"main/contracts/poolOwnerPendingFees"
 	"main/interfaces"
 	"main/utils"
+	"math"
 	"math/big"
 	"net/http"
 	"os"
@@ -37,6 +39,7 @@ const (
 	BURNERS_FOR_TOKEN_DATA             = "./data/pendingPoolFees/burnes-for-tokens.json"
 	BURNERS_DATA                       = "./data/pendingPoolFees/burners.json"
 	COWSWAP_FEES_PER_TOKEN_PATH        = "./data/pendingPoolFees/cowswap-fees-per-token"
+	COWSWAP_FEES_TIMESTAMPS            = "./data/pendingPoolFees/cowswap-fees-timestamps.json"
 	NB_ADDRESSES_IN_FUNCTION           = 20
 	ETHEREUM_CHAIN                     = "ethereum"
 	POLYGON_CHAIN                      = "polygon"
@@ -53,6 +56,9 @@ var (
 	FORK_CHAIN_ID         = map[string]string{
 		AVALANCHE_CHAIN: "43114",
 		FANTOM_CHAIN:    "250",
+	}
+	MULTICALL_CHAIN = map[string]common.Address{
+		ETHEREUM_CHAIN: utils.MULTICALL_MAINNET,
 	}
 )
 
@@ -133,7 +139,7 @@ func PendingPoolFees(client *ethclient.Client, currentBlockf uint64, currentBloc
 	for _, chain := range CHAINS_APPROVED {
 		fmt.Println("computing fees for chain ", chain)
 		if utils.ArrayContains(COWSWAP_BURNER_CHAINS, chain) {
-			earned[chain] = estimatedWithCowswapBurner(client, allPools, chain, COWSWAP_CHAINS[chain])
+			earned[chain] = estimatedWithCowswapBurner(client, currentPendingCrvFees, allPools, chain, COWSWAP_CHAINS[chain])
 		} else {
 			earned[chain] = estimatedWithSimulation(client, allPools, chain)
 		}
@@ -150,7 +156,7 @@ func PendingPoolFees(client *ethclient.Client, currentBlockf uint64, currentBloc
 	})
 }
 
-func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, allPools []interfaces.CurvePool, chain string, cowswapChain string) float64 {
+func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, currentPendingCrvFees interfaces.PendingPoolFees, allPools []interfaces.CurvePool, chain string, cowswapChain string) float64 {
 
 	// Get fee collector address
 	feeCollectorAddress, exists := FEE_COLLECTOR_PER_CHAIN_COWSWAP_BURNER[chain]
@@ -158,9 +164,11 @@ func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, allPools []inte
 		return 0
 	}
 
+	isMainnet := strings.EqualFold(chain, ETHEREUM_CHAIN)
+
 	client := mainnetClient
 	var err error
-	if !strings.EqualFold(chain, ETHEREUM_CHAIN) {
+	if !isMainnet {
 		rpcUrl := utils.GetPublicRpcUrl(chain)
 		if len(rpcUrl) == 0 {
 			return 0
@@ -184,243 +192,308 @@ func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, allPools []inte
 		return 0
 	}
 
-	balanceOfAddresses := []common.Address{burner, feeCollectorAddress}
+	_, endCollectTimeframe, err := feeCollectorContract.EpochTimeFrame(nil, big.NewInt(2))
+	if err != nil {
+		return 0
+	}
 
-	// For all pool tokens + lp, check the fee collector balance
-	// Generate calldatas
-	coinsToQuotePerContract := make(map[common.Address]map[common.Address]*big.Int)
-
-	for _, balanceOfAddress := range balanceOfAddresses {
-		_, exists := coinsToQuotePerContract[balanceOfAddress]
-		if !exists {
-			coinsToQuotePerContract[balanceOfAddress] = make(map[common.Address]*big.Int, 0)
+	timestamps := readMapTimestamp(COWSWAP_FEES_TIMESTAMPS)
+	lastTimestamp, exists := timestamps[chain]
+	if exists {
+		if lastTimestamp >= endCollectTimeframe.Uint64() {
+			return currentPendingCrvFees.Pending3CRVFees[chain]
 		}
+	}
 
-		for _, pool := range allPools {
-			if !strings.EqualFold(pool.BlockchainId, chain) {
+	// Current block
+	currentBlock, err := client.BlockByNumber(context.Background(), nil)
+	if err != nil {
+		return 0
+	}
+
+	// Get the block number we will use to query
+	blockTimestamp := currentBlock.Time()
+	if blockTimestamp > endCollectTimeframe.Uint64() {
+		blockTimestamp = endCollectTimeframe.Uint64()
+	}
+
+	blockNumber := utils.GetBlockNumberByTimestamp(chain, blockTimestamp)
+	if blockNumber == 0 {
+		return 0
+	}
+
+	// Create tokens array
+	coinsMap := make(map[common.Address]bool)
+	coins := make([]interfaces.Coin, 0)
+	for poolIndex := range allPools {
+		for i := range allPools[poolIndex].Coins {
+			coinAddress := common.HexToAddress(allPools[poolIndex].Coins[i].Address)
+			_, exists := coinsMap[coinAddress]
+			if exists {
 				continue
 			}
 
-			coin := common.HexToAddress(pool.LpTokenAddress)
-
-			_, exists := coinsToQuotePerContract[balanceOfAddress][coin]
-			if !exists {
-				erc20Contract, err := erc20.NewErc20(coin, client)
-				if err != nil {
-					fmt.Println(pool.LpTokenAddress, err)
-					continue
-				}
-
-				balanceOf, err := erc20Contract.BalanceOf(nil, balanceOfAddress)
-				if err != nil {
-					fmt.Println(pool.LpTokenAddress, err)
-					continue
-				}
-				coinsToQuotePerContract[balanceOfAddress][coin] = balanceOf
-			}
-
-			for _, coin := range pool.Coins {
-
-				_, exists := coinsToQuotePerContract[balanceOfAddress][common.HexToAddress(coin.Address)]
-				if !exists {
-
-					erc20Contract, err := erc20.NewErc20(common.HexToAddress(coin.Address), client)
-					if err != nil {
-						fmt.Println(coin.Address, err)
-						continue
-					}
-
-					balanceOf, err := erc20Contract.BalanceOf(nil, balanceOfAddress)
-					if err != nil {
-						fmt.Println(coin.Address, err)
-						continue
-					}
-
-					coinsToQuotePerContract[balanceOfAddress][common.HexToAddress(coin.Address)] = balanceOf
-				}
-			}
+			coinsMap[coinAddress] = true
+			coins = append(coins, allPools[poolIndex].Coins[i])
 		}
 	}
 
-	// Check withdraw_admin_fees
-	poolsWithWithdrawAdminFee := getPoolsWithWithdrawAdminFee(client, allPools, chain)
-	for _, pool := range poolsWithWithdrawAdminFee {
-		poolContract, err := curvePoolFactoryV2.NewCurvePoolFactoryV2(pool, client)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
+	balanceOfAddresses := []common.Address{burner, feeCollectorAddress}
+	if isMainnet {
+		// Add pool owner
+		balanceOfAddresses = append(balanceOfAddresses, utils.POOL_OWNER_PENDING_FEES_MAINNET)
+	}
 
-		i := big.NewInt(0)
-		for {
-			coin, err := poolContract.Coins(nil, i)
+	// Create balance of calls
+	curvePoolUtilsAbi, err := curvePoolUtils.CurvePoolUtilsMetaData.GetAbi()
+	if err != nil {
+		return 0
+	}
+
+	multicalls := make([]multicall.Multicall3Call, 0)
+	for i := range balanceOfAddresses {
+
+		for coinIndex := range coins {
+			// Check balance in fee collector
+			b, err := curvePoolUtilsAbi.Pack("balanceOf", common.HexToAddress(coins[coinIndex].Address), balanceOfAddresses[i])
 			if err != nil {
-				break
+				return 0
 			}
 
-			balance, err := poolContract.AdminBalances(nil, i)
-			if err != nil {
-				break
-			}
-
-			value, exists := coinsToQuotePerContract[feeCollectorAddress][coin]
-			if !exists {
-				coinsToQuotePerContract[feeCollectorAddress][coin] = balance
-			} else {
-				coinsToQuotePerContract[feeCollectorAddress][coin] = new(big.Int).Add(value, balance)
-			}
-
-			i = new(big.Int).Add(i, big.NewInt(1))
+			multicalls = append(multicalls, multicall.Multicall3Call{
+				Target:   utils.CURVE_POOL_UTILS,
+				CallData: b,
+			})
 		}
 	}
 
-	// Get Cowswap quotes from cow api
-	fmt.Println("Quotes to do : ", len(coinsToQuotePerContract))
+	multicallResponses := utils.Multicall(client, multicalls, MULTICALL_CHAIN[chain], big.NewInt(int64(blockNumber)))
+	if len(multicallResponses) != len(multicalls) {
+		return 0
+	}
+
 	totalFees := 0.0
-	feesPerToken := make(map[string]float64, 0)
+	for _ = range balanceOfAddresses {
+		for _, coin := range coins {
+			multicallResponse := multicallResponses[0]
+			multicallResponses = multicallResponses[1:]
 
-	balances := make(map[common.Address]*big.Int)
-	for _, quote := range coinsToQuotePerContract {
-		for token, balance := range quote {
-			value, exists := balances[token]
-			if !exists {
-				balances[token] = balance
+			if !multicallResponse.Success {
+				continue
+			}
+
+			decimals := -1
+			_decimals, ok := coin.Decimals.(string)
+			if ok {
+				d, err := strconv.Atoi(_decimals)
+				if err == nil {
+					decimals = d
+				}
 			} else {
-				balances[token] = new(big.Int).Add(value, balance)
+				_decimals, ok := coin.Decimals.(int)
+				if ok {
+					decimals = _decimals
+				}
+			}
+
+			if decimals == -1 {
+				continue
+			}
+
+			balance := utils.Quo(big.NewInt(0).SetBytes(multicallResponse.ReturnData), uint64(decimals))
+
+			if coin.UsdPrice == nil {
+				coin.UsdPrice = 0.0
+			}
+
+			usdPrice, ok := coin.UsdPrice.(float64)
+			if !ok {
+				usdPrice = 0.0
+			}
+			totalFees += balance * usdPrice
+		}
+	}
+
+	// Check fees still in pools
+	curvePoolAbi, err := curvePoolWithOwner.CurvePoolMetaData.GetAbi()
+	if err != nil {
+		return 0
+	}
+
+	ownerByte, err := curvePoolAbi.Pack("owner")
+	if err != nil {
+		return 0
+	}
+
+	multicalls = make([]multicall.Multicall3Call, 0)
+	poolsWithWithdrawAdminFee, poolsWithClaimAdminFee := getPoolsWithWithdrawAdminFee(client, allPools, chain)
+	for _, poolAddress := range poolsWithWithdrawAdminFee {
+		for _, pool := range allPools {
+			if strings.EqualFold(pool.Address, poolAddress.Hex()) {
+
+				multicalls = append(multicalls, multicall.Multicall3Call{
+					Target:   poolAddress,
+					CallData: ownerByte,
+				})
+
+				for i, coin := range pool.Coins {
+					coinAddress := common.HexToAddress(coin.Address)
+
+					// Fetch token balance in the pool contract (= internal balance + fees)
+					b, err := curvePoolUtilsAbi.Pack("balanceOf", coinAddress, poolAddress)
+					if err != nil {
+						return 0
+					}
+
+					multicalls = append(multicalls, multicall.Multicall3Call{
+						Target:   utils.CURVE_POOL_UTILS,
+						CallData: b,
+					})
+
+					// Fetch the internal token balances (the real balance to swap for)
+					b, err = curvePoolUtilsAbi.Pack("balances", poolAddress, big.NewInt(int64(i)))
+					if err != nil {
+						return 0
+					}
+
+					multicalls = append(multicalls, multicall.Multicall3Call{
+						Target:   utils.CURVE_POOL_UTILS,
+						CallData: b,
+					})
+				}
+
+				break
 			}
 		}
 	}
 
-	for coin, balance := range balances {
-		if balance.Cmp(big.NewInt(0)) == 0 {
-			// Empty balance
-			continue
+	for _, poolAddress := range poolsWithClaimAdminFee {
+
+		claimableClaimAdminFeesByte, err := curvePoolUtilsAbi.Pack("claimable", poolAddress, feeCollectorAddress)
+		if err != nil {
+			return 0
 		}
 
+		multicalls = append(multicalls, multicall.Multicall3Call{
+			Target:   utils.CURVE_POOL_UTILS,
+			CallData: claimableClaimAdminFeesByte,
+		})
+	}
+
+	feesInPoolResponses := utils.Multicall(client, multicalls, MULTICALL_CHAIN[chain], big.NewInt(int64(blockNumber)))
+
+	for _, poolAddress := range poolsWithWithdrawAdminFee {
 		for _, pool := range allPools {
-			found := false
-			for _, coinPool := range pool.Coins {
-				if !strings.EqualFold(coin.Hex(), coinPool.Address) {
-					continue
+			if strings.EqualFold(pool.Address, poolAddress.Hex()) {
+				ownerRes := feesInPoolResponses[0]
+				feesInPoolResponses = feesInPoolResponses[1:]
+
+				// If we don't have the method, everyone can call it
+				skipPool := true
+				// If we don't have the method, everyone can call it
+				if !ownerRes.Success {
+					skipPool = false
 				}
 
-				decimals := -1
-				if coinPool.Decimals != nil {
-					_decimals, ok := coinPool.Decimals.(string)
+				if skipPool {
+					// If we have the method, need to check if we can call it from the pool owner address
+					var owner common.Address
+					owner.SetBytes(ownerRes.ReturnData)
+					if owner == utils.POOL_OWNER_PENDING_FEES_MAINNET {
+						skipPool = false
+					}
+				}
+
+				for _, coin := range pool.Coins {
+					balanceRes := feesInPoolResponses[0]
+					selfBalance := feesInPoolResponses[1]
+					feesInPoolResponses = feesInPoolResponses[2:]
+
+					if skipPool || !balanceRes.Success || !selfBalance.Success {
+						continue
+					}
+
+					decimals := -1
+					_decimals, ok := coin.Decimals.(string)
 					if ok {
 						d, err := strconv.Atoi(_decimals)
 						if err == nil {
 							decimals = d
 						}
 					} else {
-						_decimals, ok := coinPool.Decimals.(int)
+						_decimals, ok := coin.Decimals.(int)
 						if ok {
 							decimals = _decimals
 						}
 					}
-				}
 
-				if decimals == -1 {
-					erc20Contract, err := erc20.NewErc20(coin, client)
-					if err != nil {
-						break
+					if decimals == -1 {
+						continue
 					}
 
-					d, err := erc20Contract.Decimals(nil)
-					if err != nil {
-						break
+					poolBalance := utils.Quo(big.NewInt(0).SetBytes(balanceRes.ReturnData), uint64(decimals))
+
+					poolSelfBalance := utils.Quo(big.NewInt(0).SetBytes(selfBalance.ReturnData), uint64(decimals))
+					if poolSelfBalance == 0 {
+						// Issue in the SC function
+						continue
+					}
+					toWithdraw := poolBalance - poolSelfBalance
+
+					if math.IsInf(toWithdraw, 0) || math.IsNaN(toWithdraw) {
+						toWithdraw = 0
 					}
 
-					decimals = int(d)
+					if toWithdraw < 0 {
+						continue
+					}
+
+					if coin.UsdPrice == nil {
+						coin.UsdPrice = 0.0
+					}
+
+					usdPrice, ok := coin.UsdPrice.(float64)
+					if !ok {
+						usdPrice = 0.0
+					}
+
+					totalFees += toWithdraw * usdPrice
 				}
-
-				if coinPool.UsdPrice == nil {
-					coinPool.UsdPrice = 0.0
-				}
-
-				usdPrice, ok := coinPool.UsdPrice.(float64)
-				if !ok {
-					usdPrice = 0.0
-				}
-
-				amount := usdPrice * utils.Quo(balance, uint64(decimals))
-				totalFees += amount
-				feesPerToken[coin.Hex()] = amount
-				found = true
-				break
-			}
-
-			if found {
 				break
 			}
 		}
 	}
 
-	writeMapFees(feesPerToken, COWSWAP_FEES_PER_TOKEN_PATH+"-"+chain+".json")
+	for _, poolAddress := range poolsWithClaimAdminFee {
+		for _, pool := range allPools {
+			if strings.EqualFold(pool.Address, poolAddress.Hex()) {
+				feesInPoolResponse := feesInPoolResponses[0]
+				feesInPoolResponses = feesInPoolResponses[1:]
+
+				if !feesInPoolResponse.Success {
+					break
+				}
+
+				totalSupply, _ := big.NewInt(0).SetString(pool.TotalSupply, 10)
+				if totalSupply == nil {
+					break
+				}
+
+				totalSupplyInt := utils.Quo(totalSupply, 18)
+				if totalSupplyInt == 0 {
+					break
+				}
+
+				lpClaimable := utils.Quo(big.NewInt(0).SetBytes(feesInPoolResponse.ReturnData), 18)
+				totalFees += (lpClaimable * (pool.UsdTotal / totalSupplyInt))
+				break
+			}
+		}
+	}
+
+	timestamps[chain] = blockTimestamp
+	writeMapTimestamp(timestamps, COWSWAP_FEES_TIMESTAMPS)
 	return totalFees
-}
-
-func quote(chain string, tokenToSell common.Address, amountToSell *big.Int) (*interfaces.CowswapQuote, error) {
-	posturl := "https://api.cow.fi/" + chain + "/api/v1/quote"
-
-	body := []byte(`{
-		"sellToken": "` + tokenToSell.Hex() + `",
-		"buyToken": "0xf939E0A03FB07F59A73314E73794Be0E57ac1b4E",
-		"receiver": "0xD16d5eC345Dd86Fb63C6a9C43c517210F1027914",
-		"sellTokenBalance": "erc20",
-		"buyTokenBalance": "erc20",
-		"from": "0xD16d5eC345Dd86Fb63C6a9C43c517210F1027914",
-		"priceQuality": "verified",
-		"signingScheme": "eip712",
-		"onchainOrder": false,
-		"kind": "sell",
-		"sellAmountBeforeFee": "` + amountToSell.String() + `"
-	}`)
-
-	fmt.Println(`{
-		"sellToken": "` + tokenToSell.Hex() + `",
-		"buyToken": "0xf939E0A03FB07F59A73314E73794Be0E57ac1b4E",
-		"receiver": "0xD16d5eC345Dd86Fb63C6a9C43c517210F1027914",
-		"sellTokenBalance": "erc20",
-		"buyTokenBalance": "erc20",
-		"from": "0xD16d5eC345Dd86Fb63C6a9C43c517210F1027914",
-		"priceQuality": "verified",
-		"signingScheme": "eip712",
-		"onchainOrder": false,
-		"kind": "sell",
-		"sellAmountBeforeFee": "` + amountToSell.String() + `"
-	}`)
-
-	r, err := http.NewRequest("POST", posturl, bytes.NewBuffer(body))
-	if err != nil {
-		return nil, err
-	}
-
-	r.Header.Add("Content-Type", "application/json")
-
-	client := &http.Client{}
-	res, err := client.Do(r)
-	if err != nil {
-		return nil, err
-	}
-
-	defer res.Body.Close()
-
-	body, err = io.ReadAll(res.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	fmt.Println(string(body))
-
-	quote := new(interfaces.CowswapQuote)
-
-	err = json.Unmarshal([]byte(body), &quote)
-	if err != nil {
-		return nil, err
-	}
-
-	return quote, nil
 }
 
 func estimatedWithSimulation(client *ethclient.Client, allPools []interfaces.CurvePool, chain string) float64 {
@@ -447,7 +520,7 @@ func estimatedWithSimulation(client *ethclient.Client, allPools []interfaces.Cur
 	}
 
 	// Generate calldatas for withdraw_many
-	poolsWithWithdrawAdminFee := getPoolsWithWithdrawAdminFee(clientChain, pools, chain)
+	poolsWithWithdrawAdminFee, _ := getPoolsWithWithdrawAdminFee(clientChain, pools, chain)
 	// 0x3165fbc056036ad3bc38ddf39f1764220a0e562a
 	//poolsWithWithdrawAdminFee = removeRevert(clientChain, "withdraw_admin_fees", poolsWithWithdrawAdminFee, chain)
 	//chunkPoolsWithdrawAdminFees := utils.ChunkAddressSlice(poolsWithWithdrawAdminFee, NB_ADDRESSES_IN_FUNCTION)
@@ -593,7 +666,7 @@ func fetchLastDistribution(client *ethclient.Client, currentBlock uint64, lastBl
 
 }
 
-func getPoolsWithWithdrawAdminFee(client *ethclient.Client, pools []interfaces.CurvePool, chain string) []common.Address {
+func getPoolsWithWithdrawAdminFee(client *ethclient.Client, pools []interfaces.CurvePool, chain string) ([]common.Address, []common.Address) {
 
 	poolWithWithdrawAdminFee := readMapBool(POOL_WITH_WITHDRAW_ADMIN_FEES_DATA)
 	poolWithClaimAdminFee := readMapBool(POOL_WITH_CLAIM_ADMIN_FEES_DATA)
@@ -675,13 +748,19 @@ func getPoolsWithWithdrawAdminFee(client *ethclient.Client, pools []interfaces.C
 	writeMapBol(poolWithWithdrawAdminFee, POOL_WITH_WITHDRAW_ADMIN_FEES_DATA)
 	writeMapBol(poolWithClaimAdminFee, POOL_WITH_CLAIM_ADMIN_FEES_DATA)
 
-	response := make([]common.Address, 0)
+	poolsWithWithdrawAdminFee := make([]common.Address, 0)
+	poolsWithClaimAdminFee := make([]common.Address, 0)
 	for poolAddress, value := range poolWithWithdrawAdminFee[chain] {
 		if value {
-			response = append(response, poolAddress)
+			poolsWithWithdrawAdminFee = append(poolsWithWithdrawAdminFee, poolAddress)
 		}
 	}
-	return response
+	for poolAddress, value := range poolWithClaimAdminFee[chain] {
+		if value {
+			poolsWithClaimAdminFee = append(poolsWithClaimAdminFee, poolAddress)
+		}
+	}
+	return poolsWithWithdrawAdminFee, poolsWithClaimAdminFee
 }
 
 func getTenderlyCallDatas(chain string, calldatas [][]byte) []interfaces.TenderlyCallData {
@@ -1323,4 +1402,33 @@ func writePending3CRVFees(data interfaces.PendingPoolFees) {
 	if err := os.WriteFile(PENDING_POOL_FEES_DATA, file, 0644); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func writeMapTimestamp(timestamps map[string]uint64, path string) {
+	file, err := json.Marshal(timestamps)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if err := os.WriteFile(path, file, 0644); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func readMapTimestamp(path string) map[string]uint64 {
+	if !utils.FileExists(path) {
+		return make(map[string]uint64)
+	}
+
+	file, err := os.ReadFile(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	timestamps := make(map[string]uint64)
+	if err := json.Unmarshal([]byte(file), &timestamps); err != nil {
+		log.Fatal(err)
+	}
+
+	return timestamps
 }
