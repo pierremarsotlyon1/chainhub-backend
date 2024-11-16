@@ -66,7 +66,11 @@ func main() {
 	case "pegkeepers":
 		src.FetchPegKeepers(client, lastestBlock.NumberU64(), lastestBlock.Time())
 	case "pendingPoolFees":
-		src.PendingPoolFees(client, lastestBlock.NumberU64(), lastestBlock.Time())
+		clientDrpc, err := ethclient.Dial(utils.GoDotEnvVariable("DRPC_MAINNET"))
+		if err != nil {
+			panic(err)
+		}
+		src.PendingPoolFees(clientDrpc, lastestBlock.NumberU64(), lastestBlock.Time())
 	case "inflation":
 		src.Inflation(client, lastestBlock.NumberU64(), lastestBlock.Time())
 	case "llamalend":
