@@ -7,6 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"main/contracts/crvUsdController"
+	"main/contracts/crvUsdControllerFactory"
+	"main/contracts/crvUsdFeeSplitter"
 	"main/contracts/curvePoolUtils"
 	"main/contracts/curvePoolWithOwner"
 	"main/contracts/erc20"
@@ -139,9 +142,9 @@ func PendingPoolFees(client *ethclient.Client, currentBlockf uint64, currentBloc
 	for _, chain := range CHAINS_APPROVED {
 		fmt.Println("computing fees for chain ", chain)
 		if utils.ArrayContains(COWSWAP_BURNER_CHAINS, chain) {
-			earned[chain] = estimatedWithCowswapBurner(client, currentPendingCrvFees, allPools, chain, COWSWAP_CHAINS[chain])
+			estimatedWithCowswapBurner(earned, client, currentPendingCrvFees, allPools, chain, COWSWAP_CHAINS[chain])
 		} else {
-			earned[chain] = estimatedWithSimulation(client, allPools, chain)
+			estimatedWithSimulation(earned, client, allPools, chain)
 		}
 	}
 
@@ -156,12 +159,12 @@ func PendingPoolFees(client *ethclient.Client, currentBlockf uint64, currentBloc
 	})
 }
 
-func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, currentPendingCrvFees interfaces.PendingPoolFees, allPools []interfaces.CurvePool, chain string, cowswapChain string) float64 {
+func estimatedWithCowswapBurner(earned map[string]float64, mainnetClient *ethclient.Client, currentPendingCrvFees interfaces.PendingPoolFees, allPools []interfaces.CurvePool, chain string, cowswapChain string) {
 
 	// Get fee collector address
 	feeCollectorAddress, exists := FEE_COLLECTOR_PER_CHAIN_COWSWAP_BURNER[chain]
 	if !exists {
-		return 0
+		return
 	}
 
 	isMainnet := strings.EqualFold(chain, ETHEREUM_CHAIN)
@@ -171,55 +174,147 @@ func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, currentPendingC
 	if !isMainnet {
 		rpcUrl := utils.GetPublicRpcUrl(chain)
 		if len(rpcUrl) == 0 {
-			return 0
+			return
 		}
 
 		client, err = ethclient.Dial(rpcUrl)
 		if err != nil {
 			fmt.Println("Error when creating rpc ", rpcUrl)
-			return 0
+			return
 		}
 	}
 
 	// Get burner
 	feeCollectorContract, err := feeCollector.NewFeeCollector(feeCollectorAddress, client)
 	if err != nil {
-		return 0
+		return
 	}
 
 	burner, err := feeCollectorContract.Burner(nil)
 	if err != nil {
-		return 0
+		return
 	}
 
+	// Get collect end timestamp
 	_, endCollectTimeframe, err := feeCollectorContract.EpochTimeFrame(nil, big.NewInt(2))
 	if err != nil {
-		return 0
+		return
 	}
 
 	timestamps := readMapTimestamp(COWSWAP_FEES_TIMESTAMPS)
-	lastTimestamp, exists := timestamps[chain]
-	if exists {
-		if lastTimestamp >= endCollectTimeframe.Uint64() {
-			return currentPendingCrvFees.Pending3CRVFees[chain]
-		}
+	//lastTimestamp, exists := timestamps[chain]
+	//if exists {
+	//	if lastTimestamp >= endCollectTimeframe.Uint64() {
+	//		return
+	//	}
+	//}
+
+	// Get forward end timestamp
+	_, endForwardTimeframe, err := feeCollectorContract.EpochTimeFrame(nil, big.NewInt(8))
+	if err != nil {
+		return
 	}
 
 	// Current block
 	currentBlock, err := client.BlockByNumber(context.Background(), nil)
 	if err != nil {
-		return 0
+		return
 	}
 
 	// Get the block number we will use to query
-	blockTimestamp := currentBlock.Time()
-	if blockTimestamp > endCollectTimeframe.Uint64() {
-		blockTimestamp = endCollectTimeframe.Uint64()
+	collectBlockTimestamp := currentBlock.Time()
+	if collectBlockTimestamp > endCollectTimeframe.Uint64() {
+		collectBlockTimestamp = endCollectTimeframe.Uint64()
 	}
 
-	blockNumber := utils.GetBlockNumberByTimestamp(chain, blockTimestamp)
-	if blockNumber == 0 {
-		return 0
+	collectBlockNumber := utils.GetBlockNumberByTimestamp(chain, collectBlockTimestamp)
+	if collectBlockNumber == 0 {
+		return
+	}
+
+	forwardBlockNumber := utils.GetBlockNumberByTimestamp(chain, endForwardTimeframe.Uint64()-utils.WEEK_TO_SEC)
+	if forwardBlockNumber == 0 {
+		return
+	}
+
+	// Fetch crvusd controller addresses
+	crvUsdControllerContract, err := crvUsdControllerFactory.NewCrvUsdControllerFactory(CRVUSD_CONTROLLER_FACTORY, client)
+	if err != nil {
+		return
+	}
+
+	nbCollateral, err := crvUsdControllerContract.NCollaterals(nil)
+	if err != nil {
+		return
+	}
+
+	controllerAddresses := make([]common.Address, nbCollateral.Int64())
+	for i := 0; i < int(nbCollateral.Int64()); i++ {
+		controllerAddress, err := crvUsdControllerContract.Controllers(nil, big.NewInt(int64(i)))
+		if err != nil {
+			return
+		}
+
+		controllerAddresses[i] = controllerAddress
+	}
+
+	// Fetch crv usd fee distributor weight
+	feeSplitter, err := crvUsdFeeSplitter.NewCrvUsdFeeSplitter(utils.CRV_USD_FEE_SPLITTER, client)
+	if err != nil {
+		return
+	}
+
+	nbReceivers, err := feeSplitter.NReceivers(nil)
+	if err != nil {
+		return
+	}
+
+	weight := 0.0
+	for i := 0; i < int(nbReceivers.Int64()); i++ {
+		receiver, err := feeSplitter.Receivers(nil, big.NewInt(int64(i)))
+		if err != nil {
+			return
+		}
+
+		if receiver.Addr == utils.FEE_COLLECTOR_MAINNET {
+			weight = float64(receiver.Weight.Int64()) / 100
+			break
+		}
+	}
+
+	if weight == 0 {
+		return
+	}
+
+	// Fetch collected fees events
+	query := ethereum.FilterQuery{
+		FromBlock: big.NewInt(int64(forwardBlockNumber)),
+		ToBlock:   currentBlock.Number(),
+		Addresses: controllerAddresses,
+		Topics:    [][]common.Hash{{common.HexToHash("0x5393ab6ef9bb40d91d1b04bbbeb707fbf3d1eb73f46744e2d179e4996026283f")}},
+	}
+
+	crvUsdFeesCollected := 0.0
+
+	logs, err := client.FilterLogs(context.Background(), query)
+	if err != nil {
+		return
+	}
+
+	for _, vLog := range logs {
+		controllerContract, err := crvUsdController.NewCrvUsdController(vLog.Address, client)
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+
+		event, err := controllerContract.ParseCollectFees(vLog)
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+
+		crvUsdFeesCollected += (utils.Quo(event.Amount, 18) * weight / 100)
 	}
 
 	// Create tokens array
@@ -247,7 +342,7 @@ func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, currentPendingC
 	// Create balance of calls
 	curvePoolUtilsAbi, err := curvePoolUtils.CurvePoolUtilsMetaData.GetAbi()
 	if err != nil {
-		return 0
+		return
 	}
 
 	multicalls := make([]multicall.Multicall3Call, 0)
@@ -257,7 +352,7 @@ func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, currentPendingC
 			// Check balance in fee collector
 			b, err := curvePoolUtilsAbi.Pack("balanceOf", common.HexToAddress(coins[coinIndex].Address), balanceOfAddresses[i])
 			if err != nil {
-				return 0
+				return
 			}
 
 			multicalls = append(multicalls, multicall.Multicall3Call{
@@ -267,13 +362,13 @@ func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, currentPendingC
 		}
 	}
 
-	multicallResponses := utils.Multicall(client, multicalls, MULTICALL_CHAIN[chain], big.NewInt(int64(blockNumber)))
+	multicallResponses := utils.Multicall(client, multicalls, MULTICALL_CHAIN[chain], big.NewInt(int64(collectBlockNumber)))
 	if len(multicallResponses) != len(multicalls) {
-		return 0
+		return
 	}
 
 	totalFees := 0.0
-	for _ = range balanceOfAddresses {
+	for _, balanceOfAddress := range balanceOfAddresses {
 		for _, coin := range coins {
 			multicallResponse := multicallResponses[0]
 			multicallResponses = multicallResponses[1:]
@@ -302,6 +397,10 @@ func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, currentPendingC
 
 			balance := utils.Quo(big.NewInt(0).SetBytes(multicallResponse.ReturnData), uint64(decimals))
 
+			if balanceOfAddress == feeCollectorAddress && common.HexToAddress(coin.Address) == utils.CRVUSD_ADDRESS {
+				balance -= crvUsdFeesCollected
+			}
+
 			if coin.UsdPrice == nil {
 				coin.UsdPrice = 0.0
 			}
@@ -317,12 +416,12 @@ func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, currentPendingC
 	// Check fees still in pools
 	curvePoolAbi, err := curvePoolWithOwner.CurvePoolMetaData.GetAbi()
 	if err != nil {
-		return 0
+		return
 	}
 
 	ownerByte, err := curvePoolAbi.Pack("owner")
 	if err != nil {
-		return 0
+		return
 	}
 
 	multicalls = make([]multicall.Multicall3Call, 0)
@@ -342,7 +441,7 @@ func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, currentPendingC
 					// Fetch token balance in the pool contract (= internal balance + fees)
 					b, err := curvePoolUtilsAbi.Pack("balanceOf", coinAddress, poolAddress)
 					if err != nil {
-						return 0
+						return
 					}
 
 					multicalls = append(multicalls, multicall.Multicall3Call{
@@ -353,7 +452,7 @@ func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, currentPendingC
 					// Fetch the internal token balances (the real balance to swap for)
 					b, err = curvePoolUtilsAbi.Pack("balances", poolAddress, big.NewInt(int64(i)))
 					if err != nil {
-						return 0
+						return
 					}
 
 					multicalls = append(multicalls, multicall.Multicall3Call{
@@ -371,7 +470,7 @@ func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, currentPendingC
 
 		claimableClaimAdminFeesByte, err := curvePoolUtilsAbi.Pack("claimable", poolAddress, feeCollectorAddress)
 		if err != nil {
-			return 0
+			return
 		}
 
 		multicalls = append(multicalls, multicall.Multicall3Call{
@@ -380,7 +479,7 @@ func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, currentPendingC
 		})
 	}
 
-	feesInPoolResponses := utils.Multicall(client, multicalls, MULTICALL_CHAIN[chain], big.NewInt(int64(blockNumber)))
+	feesInPoolResponses := utils.Multicall(client, multicalls, MULTICALL_CHAIN[chain], big.NewInt(int64(collectBlockNumber)))
 
 	for _, poolAddress := range poolsWithWithdrawAdminFee {
 		for _, pool := range allPools {
@@ -491,12 +590,13 @@ func estimatedWithCowswapBurner(mainnetClient *ethclient.Client, currentPendingC
 		}
 	}
 
-	timestamps[chain] = blockTimestamp
+	timestamps[chain] = collectBlockTimestamp
 	writeMapTimestamp(timestamps, COWSWAP_FEES_TIMESTAMPS)
-	return totalFees
+	earned[chain] = totalFees
+	earned["crvusd"] = crvUsdFeesCollected
 }
 
-func estimatedWithSimulation(client *ethclient.Client, allPools []interfaces.CurvePool, chain string) float64 {
+func estimatedWithSimulation(earned map[string]float64, client *ethclient.Client, allPools []interfaces.CurvePool, chain string) {
 	pools := make([]interfaces.CurvePool, 0)
 	for _, pool := range allPools {
 		if strings.EqualFold(chain, pool.BlockchainId) {
@@ -509,13 +609,13 @@ func estimatedWithSimulation(client *ethclient.Client, allPools []interfaces.Cur
 	if !strings.EqualFold(chain, ETHEREUM_CHAIN) {
 		rpcUrl := utils.GetPublicRpcUrl(chain)
 		if len(rpcUrl) == 0 {
-			return 0
+			return
 		}
 
 		clientChain, err = ethclient.Dial(rpcUrl)
 		if err != nil {
 			fmt.Println("Error when creating rpc ", rpcUrl)
-			return 0
+			return
 		}
 	}
 
@@ -567,14 +667,14 @@ func estimatedWithSimulation(client *ethclient.Client, allPools []interfaces.Cur
 		forkRpcUrl, forkId, _, err := createFork(FORK_CHAIN_ID[chain], 0)
 		if err != nil {
 			fmt.Println(err)
-			return 0
+			return
 		}
 		defer deleteFork(forkId)
 
 		forkClient, err := ethclient.Dial(forkRpcUrl)
 		if err != nil {
 			fmt.Println("Error when creating rpc ", forkRpcUrl)
-			return 0
+			return
 		}
 
 		// Simulation de l'exécution de la transaction
@@ -606,7 +706,7 @@ func estimatedWithSimulation(client *ethclient.Client, allPools []interfaces.Cur
 		}
 	}
 
-	return utils.Quo(new(big.Int).Sub(newBalance, balance), TARKET_TOKEN_DECIMALS[chain])
+	earned[chain] = utils.Quo(new(big.Int).Sub(newBalance, balance), TARKET_TOKEN_DECIMALS[chain])
 }
 
 func fetchLastDistribution(client *ethclient.Client, currentBlock uint64, lastBlock uint64, lastTimestamp uint64, lastDistributionAmount uint64) (uint64, uint64) {
