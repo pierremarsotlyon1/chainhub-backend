@@ -43,4 +43,5 @@ jobs:
           go run ./main.go pegkeepers ALCHEMY_APIKEY_2
           go run ./main.go peg
           go run ./main.go votes
+          go run ./main.go wrappersSwaps
 

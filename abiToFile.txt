@@ -35,3 +35,4 @@ abigen --abi=./abis/Escrow.json --pkg=escrow --out=Escrow.go
 abigen --abi=./abis/FeeCollector.json --pkg=feeCollector --out=FeeCollector.go
 abigen --abi=./abis/FeeDistributor.json --pkg=feeDistributor --out=FeeDistributor.go
 abigen --abi=./abis/CrvUsdFeeSplitter.json --pkg=crvUsdFeeSplitter --out=CrvUsdFeeSplitter.go
+abigen --abi=./abis/CurvePoolWrappers.json --pkg=curvePoolWrappers --out=CurvePoolWrappers.go

@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
@@ -23,27 +22,6 @@ const (
 	BUCKET_PEGS_DIR           = "data/pegs"
 	BUCKET_PEGS_PER_HOUR_FILE = BUCKET_PEGS_DIR + "/pegs-per-hour.json"
 )
-
-var WRAPPERS = []interfaces.Wrapper{
-	{
-		Name:        "Stake DAO (sdCRV)",
-		Address:     utils.STAKEDAO_LOCKERS,
-		LogoUrl:     "https://www.defiwars.xyz/_next/image?url=%2F_next%2Fstatic%2Fmedia%2Fstakedao.42f95a34.png&w=48&q=75",
-		PoolAddress: common.HexToAddress("0xCA0253A98D16e9C1e3614caFDA19318EE69772D0"),
-	},
-	{
-		Name:        "Yearn (yCRV)",
-		Address:     utils.YEARN_LOCKERS,
-		LogoUrl:     "https://www.defiwars.xyz/_next/image?url=%2F_next%2Fstatic%2Fmedia%2Fyearn.01d9002d.png&w=48&q=75",
-		PoolAddress: common.HexToAddress("0x99f5acc8ec2da2bc0771c32814eff52b712de1e5"),
-	},
-	{
-		Name:        "Convex (cvxCRV)",
-		Address:     utils.CONVEX_LOCKERS,
-		LogoUrl:     "https://www.defiwars.xyz/_next/image?url=%2F_next%2Fstatic%2Fmedia%2Fconvex.7542789f.jpeg&w=48&q=75",
-		PoolAddress: common.HexToAddress("0x971add32ea87f10bd192671630be3be8a11b8623"),
-	},
-}
 
 func Pegs(client *ethclient.Client) {
 
@@ -57,7 +35,7 @@ func Pegs(client *ethclient.Client) {
 	blockTimestamp := block.Time()
 	startDay := uint64(utils.GetStartOfDay(blockTimestamp))
 
-	for _, wrapper := range WRAPPERS {
+	for _, wrapper := range utils.WRAPPERS {
 
 		poolContract, err := curvePoolFactoryV2.NewCurvePoolFactoryV2(wrapper.PoolAddress, client)
 		if err != nil {
@@ -104,7 +82,7 @@ func PegsHistorical(client *ethclient.Client) {
 
 		blockNumber := utils.GetBlockNumberByTimestamp("ethereum", startTimestamp)
 
-		for _, wrapper := range WRAPPERS {
+		for _, wrapper := range utils.WRAPPERS {
 
 			poolContract, err := curvePoolFactoryV2.NewCurvePoolFactoryV2(wrapper.PoolAddress, client)
 			if err != nil {
