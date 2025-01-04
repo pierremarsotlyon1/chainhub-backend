@@ -170,7 +170,7 @@ func computeInflation(inflationData interfaces.InflationData, vestingClaims []in
 	}
 
 	// Bounties
-	previousClaims := readDataPath(DATA_PATH)
+	previousClaims := readDataPath()
 	for _, claims := range previousClaims {
 		found := false
 		ts := utils.GetStartOfMonth(int64(claims.Timestamp))

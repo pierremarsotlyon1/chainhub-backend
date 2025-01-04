@@ -34,8 +34,14 @@ const (
 	crvusdControllers     = "./data/crvusd/controllers.json"
 	crvusdControllersData = "./data/crvusd/controllers_data.json"
 	crvusdHistoricalData  = "./data/crvusd/crvusd-historical.json"
-	factoryBlockDeployed  = 17257955
-	PAS                   = 0
+
+	bucket_crvusd_dir                   = "data/crvusd"
+	bucket_crvusd_controllers_file      = bucket_crvusd_dir + "/controllers.json"
+	bucket_crvusd_controllers_data_file = bucket_crvusd_dir + "/controllers_data.json"
+	bucket_crvusd_historical_data_file  = bucket_crvusd_dir + "/crvusd-historical.json"
+
+	factoryBlockDeployed = 17257955
+	PAS                  = 0
 )
 
 func CrvUSD(client *ethclient.Client, currentBlock uint64) {
@@ -489,10 +495,11 @@ func writeCrvUSDHistorical(controllersData []interfaces.CrvUsdData, client *ethc
 		}
 	}
 
-	file, err := json.Marshal(interfaces.CrvUSDHistorical{
+	data := interfaces.CrvUSDHistorical{
 		CurrentCrvUSDPrice:  crvUSDPrice,
 		DailyHistoricalData: historicalData,
-	})
+	}
+	file, err := json.Marshal(data)
 
 	if err != nil {
 		log.Fatal(err)
@@ -501,9 +508,23 @@ func writeCrvUSDHistorical(controllersData []interfaces.CrvUsdData, client *ethc
 	if err := os.WriteFile(crvusdHistoricalData, file, 0644); err != nil {
 		log.Fatal(err)
 	}
+
+	// Google Cloud
+	if err := utils.WriteBucketFile(bucket_crvusd_historical_data_file, data); err != nil {
+		fmt.Println(err)
+	}
 }
 
 func readCrvUsdControllerData() []interfaces.CrvUsdData {
+	controllersData := make([]interfaces.CrvUsdData, 0)
+	b, err := utils.ReadBucketFile(bucket_crvusd_controllers_data_file)
+	if err == nil && len(b) > 0 {
+		if err := json.Unmarshal(b, &controllersData); err != nil {
+			log.Fatal(err)
+		}
+		return controllersData
+	}
+
 	if !utils.FileExists(crvusdControllersData) {
 		return make([]interfaces.CrvUsdData, 0)
 	}
@@ -513,7 +534,6 @@ func readCrvUsdControllerData() []interfaces.CrvUsdData {
 		log.Fatal(err)
 	}
 
-	controllersData := make([]interfaces.CrvUsdData, 0)
 	if err := json.Unmarshal([]byte(file), &controllersData); err != nil {
 		log.Fatal(err)
 	}
@@ -530,9 +550,23 @@ func writeCrvUsdControllersData(controllersData []interfaces.CrvUsdData) {
 	if err := os.WriteFile(crvusdControllersData, file, 0644); err != nil {
 		log.Fatal(err)
 	}
+
+	// Google Cloud
+	if err := utils.WriteBucketFile(bucket_crvusd_controllers_data_file, controllersData); err != nil {
+		fmt.Println(err)
+	}
 }
 
 func readCrvUsdControllers() []interfaces.CrvUsdController {
+
+	controllers := make([]interfaces.CrvUsdController, 0)
+	b, err := utils.ReadBucketFile(bucket_crvusd_controllers_file)
+	if err == nil && len(b) > 0 {
+		if err := json.Unmarshal(b, &controllers); err != nil {
+			log.Fatal(err)
+		}
+		return controllers
+	}
 
 	if !utils.FileExists(crvusdControllers) {
 		return make([]interfaces.CrvUsdController, 0)
@@ -543,7 +577,6 @@ func readCrvUsdControllers() []interfaces.CrvUsdController {
 		log.Fatal(err)
 	}
 
-	controllers := make([]interfaces.CrvUsdController, 0)
 	if err := json.Unmarshal([]byte(file), &controllers); err != nil {
 		log.Fatal(err)
 	}
@@ -559,5 +592,10 @@ func writeCrvUsdControllers(controllers []interfaces.CrvUsdController) {
 
 	if err := os.WriteFile(crvusdControllers, file, 0644); err != nil {
 		log.Fatal(err)
+	}
+
+	// Google Cloud
+	if err := utils.WriteBucketFile(bucket_crvusd_controllers_file, controllers); err != nil {
+		fmt.Println(err)
 	}
 }

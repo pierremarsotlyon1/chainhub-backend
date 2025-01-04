@@ -26,6 +26,9 @@ const (
 	LLAMALEND_PER_DAY_PATH    = "./data/llamalend/llamalend-per-day.json"
 	LLAMALEND_CONFIGS_MAINNET = "./data/configs/llamalend-mainnet.json"
 	LLAMALEND_CONFIGS_ARB     = "./data/configs/llamalend-arb.json"
+
+	BUCKET_LLAMALEND_DIR          = "data/llamalend"
+	BUCKET_LLAMALEND_PER_DAY_FILE = BUCKET_LLAMALEND_DIR + "/llamalend-per-day.json"
 )
 
 var LLAMALEND_FACTORIES = []interfaces.LlamalendConfig{
@@ -446,6 +449,15 @@ func getTokenPrice(tokenAddress common.Address, chainName string, timestamp uint
 
 func readMarkets() []interfaces.LlamalendMarket {
 
+	markets := make([]interfaces.LlamalendMarket, 0)
+	b, err := utils.ReadBucketFile(BUCKET_LLAMALEND_PER_DAY_FILE)
+	if err == nil && len(b) > 0 {
+		if err := json.Unmarshal(b, &markets); err != nil {
+			log.Fatal(err)
+		}
+		return markets
+	}
+
 	if !utils.FileExists(LLAMALEND_PER_DAY_PATH) {
 		return make([]interfaces.LlamalendMarket, 0)
 	}
@@ -455,7 +467,6 @@ func readMarkets() []interfaces.LlamalendMarket {
 		log.Fatal(err)
 	}
 
-	markets := make([]interfaces.LlamalendMarket, 0)
 	if err := json.Unmarshal([]byte(file), &markets); err != nil {
 		log.Fatal(err)
 	}
@@ -471,5 +482,9 @@ func writeMarkets(markets []interfaces.LlamalendMarket) {
 
 	if err := os.WriteFile(LLAMALEND_PER_DAY_PATH, file, 0644); err != nil {
 		log.Fatal(err)
+	}
+
+	if err := utils.WriteBucketFile(BUCKET_LLAMALEND_PER_DAY_FILE, markets); err != nil {
+		fmt.Println(err)
 	}
 }

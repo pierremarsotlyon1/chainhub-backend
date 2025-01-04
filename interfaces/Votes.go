@@ -10,6 +10,7 @@ type Vote struct {
 	Id                    *big.Int       `json:"id"`
 	Open                  bool           `json:"open"`
 	Executed              bool           `json:"executed"`
+	ExecutedHash          common.Hash    `json:"executedHash"`
 	StartDate             uint64         `json:"startDate"`
 	EndDate               uint64         `json:"endDate"`
 	SnapshotBlock         uint64         `json:"snapshotBlock"`

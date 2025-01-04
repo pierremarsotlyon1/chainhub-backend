@@ -19,24 +19,27 @@ import (
 
 const (
 	PEGS_PER_HOUR_PATH = "./data/pegs/pegs-per-hour.json"
+
+	BUCKET_PEGS_DIR           = "/data/pegs"
+	BUCKET_PEGS_PER_HOUR_FILE = BUCKET_PEGS_DIR + "/pegs-per-hour.json"
 )
 
 var WRAPPERS = []interfaces.Wrapper{
 	{
 		Name:        "Stake DAO (sdCRV)",
-		Address:     common.HexToAddress("0x52f541764E6e90eeBc5c21Ff570De0e2D63766B6"),
+		Address:     utils.STAKEDAO_LOCKERS,
 		LogoUrl:     "https://www.defiwars.xyz/_next/image?url=%2F_next%2Fstatic%2Fmedia%2Fstakedao.42f95a34.png&w=48&q=75",
 		PoolAddress: common.HexToAddress("0xCA0253A98D16e9C1e3614caFDA19318EE69772D0"),
 	},
 	{
 		Name:        "Yearn (yCRV)",
-		Address:     common.HexToAddress("0xF147b8125d2ef93FB6965Db97D6746952a133934"),
+		Address:     utils.YEARN_LOCKERS,
 		LogoUrl:     "https://www.defiwars.xyz/_next/image?url=%2F_next%2Fstatic%2Fmedia%2Fyearn.01d9002d.png&w=48&q=75",
 		PoolAddress: common.HexToAddress("0x99f5acc8ec2da2bc0771c32814eff52b712de1e5"),
 	},
 	{
 		Name:        "Convex (cvxCRV)",
-		Address:     common.HexToAddress("0x989AEb4d175e16225E39E87d0D97A3360524AD80"),
+		Address:     utils.CONVEX_LOCKERS,
 		LogoUrl:     "https://www.defiwars.xyz/_next/image?url=%2F_next%2Fstatic%2Fmedia%2Fconvex.7542789f.jpeg&w=48&q=75",
 		PoolAddress: common.HexToAddress("0x971add32ea87f10bd192671630be3be8a11b8623"),
 	},
@@ -136,6 +139,15 @@ func PegsHistorical(client *ethclient.Client) {
 
 func readDailyPegs() []interfaces.Peg {
 
+	pegs := make([]interfaces.Peg, 0)
+	b, err := utils.ReadBucketFile(BUCKET_PEGS_PER_HOUR_FILE)
+	if err == nil && len(b) > 0 {
+		if err := json.Unmarshal(b, &pegs); err != nil {
+			log.Fatal(err)
+		}
+		return pegs
+	}
+
 	if !utils.FileExists(PEGS_PER_HOUR_PATH) {
 		return make([]interfaces.Peg, 0)
 	}
@@ -145,7 +157,6 @@ func readDailyPegs() []interfaces.Peg {
 		log.Fatal(err)
 	}
 
-	pegs := make([]interfaces.Peg, 0)
 	if err := json.Unmarshal([]byte(file), &pegs); err != nil {
 		log.Fatal(err)
 	}
@@ -161,5 +172,9 @@ func writeDailyPegs(pegs []interfaces.Peg) {
 
 	if err := os.WriteFile(PEGS_PER_HOUR_PATH, file, 0644); err != nil {
 		log.Fatal(err)
+	}
+
+	if err := utils.WriteBucketFile(BUCKET_PEGS_PER_HOUR_FILE, pegs); err != nil {
+		fmt.Println(err)
 	}
 }

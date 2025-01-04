@@ -31,10 +31,14 @@ var VOTE_CREATE_TOPIC = common.HexToHash("0x0730610a5322c6584fb6f5bb760719e650c8
 var VOTE_EXECUTED_TOPIC = common.HexToHash("0xbf8e2b108bb7c980e08903a8a46527699d5e84905a082d56dacb4150725c8cab")
 var CAST_VOTE_TOPIC = common.HexToHash("0xb34ee265e3d4f5ec4e8b52d59b2a9be8fceca2f274ebc080d8fba797fea9391f")
 
-const VOTES_PATH = "./data/votes.json"
-const OWNERSHIP = "ownership"
-const PARAMETER = "parameter"
-const votes_config = "./data/configs/votes-config.json"
+const (
+	VOTES_PATH        = "./data/votes.json"
+	OWNERSHIP         = "ownership"
+	PARAMETER         = "parameter"
+	votes_config      = "./data/configs/votes-config.json"
+	BUCKET_VOTES_DIR  = "data/votes"
+	BUCKET_VOTES_FILE = BUCKET_VOTES_DIR + "/votes.json"
+)
 
 const BLOCK_BEFORE_SNAPSHOT = 10
 
@@ -151,6 +155,7 @@ func FetchVotes(client *ethclient.Client, currentBlock uint64) {
 
 			// Get vote id according to event
 			voteId := big.NewInt(0)
+			var executedHash common.Hash
 			var newVoter interfaces.Voter
 
 			if strings.EqualFold(vLog.Topics[0].Hex(), VOTE_EXECUTED_TOPIC.Hex()) {
@@ -160,6 +165,7 @@ func FetchVotes(client *ethclient.Client, currentBlock uint64) {
 					continue
 				}
 				voteId = event.VoteId
+				executedHash = vLog.TxHash
 			} else if strings.EqualFold(vLog.Topics[0].Hex(), CAST_VOTE_TOPIC.Hex()) {
 				event, err := voterContract.ParseCastVote(vLog)
 				if err != nil {
@@ -186,6 +192,7 @@ func FetchVotes(client *ethclient.Client, currentBlock uint64) {
 					votes[i].Open = v.Open
 					votes[i].Nay = v.Nay
 					votes[i].Yea = v.Yea
+					votes[i].ExecutedHash = executedHash
 
 					if !utils.IsNullAddress(newVoter.Voter) {
 						votes[i].Voters = append(votes[i].Voters, newVoter)
@@ -357,6 +364,16 @@ func getTenderlySimulation(vote interfaces.Vote) (string, error) {
 
 func readVotes() []interfaces.Vote {
 
+	votes := make([]interfaces.Vote, 0)
+
+	b, err := utils.ReadBucketFile(BUCKET_VOTES_FILE)
+	if err == nil && len(b) > 0 {
+		if err := json.Unmarshal(b, &votes); err != nil {
+			log.Fatal(err)
+		}
+		return votes
+	}
+
 	if !utils.FileExists(VOTES_PATH) {
 		return make([]interfaces.Vote, 0)
 	}
@@ -366,7 +383,6 @@ func readVotes() []interfaces.Vote {
 		log.Fatal(err)
 	}
 
-	votes := make([]interfaces.Vote, 0)
 	if err := json.Unmarshal([]byte(file), &votes); err != nil {
 		log.Fatal(err)
 	}
@@ -382,5 +398,9 @@ func writeVotes(votes []interfaces.Vote) {
 
 	if err := os.WriteFile(VOTES_PATH, file, 0644); err != nil {
 		log.Fatal(err)
+	}
+
+	if err := utils.WriteBucketFile(BUCKET_VOTES_FILE, votes); err != nil {
+		fmt.Println(err)
 	}
 }
