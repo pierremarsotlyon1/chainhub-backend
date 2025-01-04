@@ -20,7 +20,7 @@ import (
 const (
 	PEGS_PER_HOUR_PATH = "./data/pegs/pegs-per-hour.json"
 
-	BUCKET_PEGS_DIR           = "/data/pegs"
+	BUCKET_PEGS_DIR           = "data/pegs"
 	BUCKET_PEGS_PER_HOUR_FILE = BUCKET_PEGS_DIR + "/pegs-per-hour.json"
 )
 
