@@ -31,7 +31,7 @@ jobs:
           credentials_json: '${{ secrets.GOOGLE_CREDENTIALS }}'
       - uses: actions/setup-go@v2
         with:
-          go-version: '1.22.1'
+          go-version: '1.23.4'
       
       - name: Run all scripts
         run: |
