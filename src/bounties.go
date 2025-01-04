@@ -63,9 +63,15 @@ var BRIBE_CRV_FINANCE_ADDRESSES = []common.Address{
 	common.HexToAddress("0x7893bbb46613d7a4fbcc31dab4c9b823ffee1026"),
 }
 
-const DATA_PATH = "./data/data.json"
-const STATS_PATH = "./data/stats.json"
-const bounties_config = "./data/configs/bounties-config.json"
+const (
+	data_path       = "./data/data.json"
+	stats_path      = "./data/stats.json"
+	bounties_config = "./data/configs/bounties-config.json"
+
+	BUCKET_BOUNTIES_DIR        = "data/bounties"
+	BUCKET_BOUNTIES_DATA_FILE  = BUCKET_BOUNTIES_DIR + "/data.json"
+	BUCKET_BOUNTIES_STATS_FILE = BUCKET_BOUNTIES_DIR + "/stats.json"
+)
 
 func FetchBounties(client *ethclient.Client, currentBlock uint64, alchemyRpcUrl string) {
 
@@ -77,7 +83,7 @@ func FetchBounties(client *ethclient.Client, currentBlock uint64, alchemyRpcUrl 
 	// Bounties
 	allClaimed := make([]interfaces.BountyClaimed, 0)
 
-	previousClaims := readDataPath(DATA_PATH)
+	previousClaims := readDataPath()
 
 	allClaimed = append(allClaimed, previousClaims...)
 
@@ -137,7 +143,7 @@ func computeBountiesStats(allClaimed []interfaces.BountyClaimed) {
 		allClaimedWithPrice = append(allClaimedWithPrice, bounty)
 	}
 
-	writeDataPath(DATA_PATH, allClaimedWithPrice)
+	writeDataPath(allClaimedWithPrice)
 
 	fmt.Println("Total bounties USD (veCRV + vlCVX): ", fmt.Sprintf("%f", totalBountiesUSD))
 	fmt.Println("Total veCRV bounties USD : ", fmt.Sprintf("%f", totalVeCRVBountiesUSD))
@@ -703,29 +709,40 @@ func isVlCVX(bounty interfaces.BountyClaimed) bool {
 	return bounty.Comment == "vlCVX"
 }
 
-func writeDataPath(fileName string, claimed []interfaces.BountyClaimed) {
+func writeDataPath(claimed []interfaces.BountyClaimed) {
 	file, err := json.Marshal(claimed)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	if err := os.WriteFile(fileName, file, 0644); err != nil {
+	if err := os.WriteFile(data_path, file, 0644); err != nil {
 		log.Fatal(err)
 	}
+
+	// Google Cloud
+	utils.WriteBucketFile(BUCKET_BOUNTIES_DATA_FILE, claimed)
 }
 
-func readDataPath(fileName string) []interfaces.BountyClaimed {
+func readDataPath() []interfaces.BountyClaimed {
+	allClaimed := make([]interfaces.BountyClaimed, 0)
 
-	if !utils.FileExists(fileName) {
+	b, err := utils.ReadBucketFile(BUCKET_BOUNTIES_DATA_FILE)
+	if err == nil && len(b) > 0 {
+		if err := json.Unmarshal(b, &allClaimed); err != nil {
+			log.Fatal(err)
+		}
+		return allClaimed
+	}
+
+	if !utils.FileExists(data_path) {
 		return make([]interfaces.BountyClaimed, 0)
 	}
 
-	file, err := os.ReadFile(fileName)
+	file, err := os.ReadFile(data_path)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	allClaimed := make([]interfaces.BountyClaimed, 0)
 	if err := json.Unmarshal([]byte(file), &allClaimed); err != nil {
 		log.Fatal(err)
 	}
@@ -739,7 +756,10 @@ func writeStats(stats interfaces.Stats) {
 		log.Fatal(err)
 	}
 
-	if err := os.WriteFile(STATS_PATH, file, 0644); err != nil {
+	if err := os.WriteFile(stats_path, file, 0644); err != nil {
 		log.Fatal(err)
 	}
+
+	// Google Cloud
+	utils.WriteBucketFile(BUCKET_BOUNTIES_STATS_FILE, stats)
 }

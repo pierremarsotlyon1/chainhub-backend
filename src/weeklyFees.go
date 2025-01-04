@@ -19,7 +19,9 @@ import (
 )
 
 const (
-	weeklyFeesPath = "./data/weeklyFees/weekly-fees.json"
+	weeklyFeesPath          = "./data/weeklyFees/weekly-fees.json"
+	BUCKET_WEEKLY_FEES_DIR  = "data/weekly-fees"
+	BUCKET_WEEKLY_FEES_FILE = BUCKET_WEEKLY_FEES_DIR + "/weekly-fees.json"
 )
 
 func WeeklyFees(client *ethclient.Client) {
@@ -89,6 +91,16 @@ func WeeklyFees(client *ethclient.Client) {
 
 func readWeeklyFees() []interfaces.WeeklyFeesTable {
 
+	tables := make([]interfaces.WeeklyFeesTable, 0)
+	b, err := utils.ReadBucketFile(BUCKET_WEEKLY_FEES_FILE)
+	if err == nil && len(b) > 0 {
+		if err := json.Unmarshal(b, &tables); err != nil {
+			log.Fatal(err)
+		}
+
+		return tables
+	}
+
 	if !utils.FileExists(weeklyFeesPath) {
 		return make([]interfaces.WeeklyFeesTable, 0)
 	}
@@ -98,7 +110,6 @@ func readWeeklyFees() []interfaces.WeeklyFeesTable {
 		log.Fatal(err)
 	}
 
-	tables := make([]interfaces.WeeklyFeesTable, 0)
 	if err := json.Unmarshal([]byte(file), &tables); err != nil {
 		log.Fatal(err)
 	}
@@ -137,5 +148,10 @@ func writeWeeklyFees(tables []interfaces.WeeklyFeesTable) {
 
 	if err := os.WriteFile(weeklyFeesPath, file, 0644); err != nil {
 		log.Fatal(err)
+	}
+
+	// Google Cloud
+	if err := utils.WriteBucketFile(BUCKET_WEEKLY_FEES_FILE, newTable); err != nil {
+		fmt.Println(err)
 	}
 }

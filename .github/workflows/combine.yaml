@@ -15,6 +15,7 @@ env:
   TENDERLY_SLUG: ${{ secrets.TENDERLY_SLUG }}
   TENDERLY_PROJECT_SLUG: ${{ secrets.TENDERLY_PROJECT_SLUG }}
   TENDERLY_ACCESS_KEY: ${{ secrets.TENDERLY_ACCESS_KEY }}
+  GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
 
 jobs:
   build: # make sure build/ci work properly
@@ -25,6 +26,9 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+      - uses: 'google-github-actions/auth@v2'
+        with:
+          credentials_json: '${{ secrets.GOOGLE_CREDENTIALS }}'
       - uses: actions/setup-go@v2
         with:
           go-version: '1.22.1'
@@ -39,18 +43,4 @@ jobs:
           go run ./main.go pegkeepers ALCHEMY_APIKEY_2
           go run ./main.go peg
           go run ./main.go votes
-
-      - name: Commit and push changes to repo
-        run: |
-          git config user.email "actions@github.com"
-          git config user.name "crvhub"
-          git config pull.rebase false
-          git pull
-          git add .
-          git commit -m "Combine"
-          git merge --strategy=ours origin/main
-          git pull
-          git push
-        shell: bash
-        if: always()
 

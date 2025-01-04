@@ -1403,6 +1403,16 @@ func sendTx(forkClient *ethclient.Client, to common.Address, data []byte) error 
 }
 
 func readMapBool(path string) map[string]map[common.Address]bool {
+	pools := make(map[string]map[common.Address]bool)
+	b, err := utils.ReadBucketFile(path[2:])
+	if err == nil && len(b) > 0 {
+		if err := json.Unmarshal(b, &pools); err != nil {
+			log.Fatal(err)
+		}
+
+		return pools
+	}
+
 	if !utils.FileExists(path) {
 		return make(map[string]map[common.Address]bool)
 	}
@@ -1412,7 +1422,6 @@ func readMapBool(path string) map[string]map[common.Address]bool {
 		log.Fatal(err)
 	}
 
-	pools := make(map[string]map[common.Address]bool)
 	if err := json.Unmarshal([]byte(file), &pools); err != nil {
 		log.Fatal(err)
 	}
@@ -1429,9 +1438,23 @@ func writeMapBol(pools map[string]map[common.Address]bool, path string) {
 	if err := os.WriteFile(path, file, 0644); err != nil {
 		log.Fatal(err)
 	}
+
+	if err := utils.WriteBucketFile(path[2:], pools); err != nil {
+		fmt.Println(err)
+	}
 }
 
 func readMap(path string) map[common.Address]bool {
+	pools := make(map[common.Address]bool)
+	b, err := utils.ReadBucketFile(path[2:])
+	if err == nil && len(b) > 0 {
+		if err := json.Unmarshal(b, &pools); err != nil {
+			log.Fatal(err)
+		}
+
+		return pools
+	}
+
 	if !utils.FileExists(path) {
 		return make(map[common.Address]bool)
 	}
@@ -1441,7 +1464,6 @@ func readMap(path string) map[common.Address]bool {
 		log.Fatal(err)
 	}
 
-	pools := make(map[common.Address]bool)
 	if err := json.Unmarshal([]byte(file), &pools); err != nil {
 		log.Fatal(err)
 	}
@@ -1458,6 +1480,10 @@ func writeMap(pools map[common.Address]bool, path string) {
 	if err := os.WriteFile(path, file, 0644); err != nil {
 		log.Fatal(err)
 	}
+
+	if err := utils.WriteBucketFile(path[2:], pools); err != nil {
+		fmt.Println(err)
+	}
 }
 
 func writeMapFees(pools map[string]float64, path string) {
@@ -1469,9 +1495,23 @@ func writeMapFees(pools map[string]float64, path string) {
 	if err := os.WriteFile(path, file, 0644); err != nil {
 		log.Fatal(err)
 	}
+
+	if err := utils.WriteBucketFile(path[2:], pools); err != nil {
+		fmt.Println(err)
+	}
 }
 
 func readPending3CRVFees() interfaces.PendingPoolFees {
+	pendingPoolFees := new(interfaces.PendingPoolFees)
+	b, err := utils.ReadBucketFile(PENDING_POOL_FEES_DATA[2:])
+	if err == nil && len(b) > 0 {
+		if err := json.Unmarshal(b, &pendingPoolFees); err != nil {
+			log.Fatal(err)
+		}
+
+		return *pendingPoolFees
+	}
+
 	if !utils.FileExists(PENDING_POOL_FEES_DATA) {
 		return interfaces.PendingPoolFees{
 			LastBlock:                 0,
@@ -1485,7 +1525,6 @@ func readPending3CRVFees() interfaces.PendingPoolFees {
 		log.Fatal(err)
 	}
 
-	pendingPoolFees := new(interfaces.PendingPoolFees)
 	if err := json.Unmarshal([]byte(file), &pendingPoolFees); err != nil {
 		log.Fatal(err)
 	}
@@ -1502,6 +1541,10 @@ func writePending3CRVFees(data interfaces.PendingPoolFees) {
 	if err := os.WriteFile(PENDING_POOL_FEES_DATA, file, 0644); err != nil {
 		log.Fatal(err)
 	}
+
+	if err := utils.WriteBucketFile(PENDING_POOL_FEES_DATA[2:], data); err != nil {
+		fmt.Println(err)
+	}
 }
 
 func writeMapTimestamp(timestamps map[string]uint64, path string) {
@@ -1513,9 +1556,24 @@ func writeMapTimestamp(timestamps map[string]uint64, path string) {
 	if err := os.WriteFile(path, file, 0644); err != nil {
 		log.Fatal(err)
 	}
+
+	if err := utils.WriteBucketFile(path[2:], timestamps); err != nil {
+		fmt.Println(err)
+	}
 }
 
 func readMapTimestamp(path string) map[string]uint64 {
+
+	timestamps := make(map[string]uint64)
+	b, err := utils.ReadBucketFile(path[2:])
+	if err == nil && len(b) > 0 {
+		if err := json.Unmarshal(b, &timestamps); err != nil {
+			log.Fatal(err)
+		}
+
+		return timestamps
+	}
+
 	if !utils.FileExists(path) {
 		return make(map[string]uint64)
 	}
@@ -1525,7 +1583,6 @@ func readMapTimestamp(path string) map[string]uint64 {
 		log.Fatal(err)
 	}
 
-	timestamps := make(map[string]uint64)
 	if err := json.Unmarshal([]byte(file), &timestamps); err != nil {
 		log.Fatal(err)
 	}

@@ -31,6 +31,11 @@ const (
 	PEGKEEPER_DATA        = "./data/pegkeepers/data.json"
 	PEGKEEPER_VOLUME_DATA = "./data/pegkeepers/volume.json"
 	PEGKEEPER_FEE_DATA    = "./data/pegkeepers/fee.json"
+
+	BUCKET_PEGKEEPER_DIR         = "data/pegkeeper"
+	BUCKET_PEGKEEPER_DATA_FILE   = BUCKET_PEGKEEPER_DIR + "/data.json"
+	BUCKET_PEGKEEPER_VOLUME_FILE = BUCKET_PEGKEEPER_DIR + "/volume.json"
+	BUCKET_PEGKEEPER_FEE_FILE    = BUCKET_PEGKEEPER_DIR + "/fee.json"
 )
 
 func FetchPegKeepers(client *ethclient.Client, currentBlock uint64, currentBlockTImestamp uint64) {
@@ -399,9 +404,24 @@ func writePegKeepers(pegKeepers []interfaces.PegKeeper) {
 	if err := os.WriteFile(PEGKEEPER_DATA, file, 0644); err != nil {
 		log.Fatal(err)
 	}
+
+	// Google Cloud
+	if err := utils.WriteBucketFile(BUCKET_PEGKEEPER_DATA_FILE, pegKeepers); err != nil {
+		fmt.Println(err)
+	}
 }
 
 func readPegKeepers() []interfaces.PegKeeper {
+
+	pegkepeers := make([]interfaces.PegKeeper, 0)
+	b, err := utils.ReadBucketFile(BUCKET_PEGKEEPER_DATA_FILE)
+	if err == nil && len(b) > 0 {
+		if err := json.Unmarshal(b, &pegkepeers); err != nil {
+			log.Fatal(err)
+		}
+
+		return pegkepeers
+	}
 
 	if !utils.FileExists(PEGKEEPER_DATA) {
 		return make([]interfaces.PegKeeper, 0)
@@ -412,7 +432,6 @@ func readPegKeepers() []interfaces.PegKeeper {
 		log.Fatal(err)
 	}
 
-	pegkepeers := make([]interfaces.PegKeeper, 0)
 	if err := json.Unmarshal([]byte(file), &pegkepeers); err != nil {
 		log.Fatal(err)
 	}
@@ -429,9 +448,24 @@ func writePegKeepersFees(fees []interfaces.PegKeeperFee) {
 	if err := os.WriteFile(PEGKEEPER_FEE_DATA, file, 0644); err != nil {
 		log.Fatal(err)
 	}
+
+	// Google Cloud
+	if err := utils.WriteBucketFile(BUCKET_PEGKEEPER_FEE_FILE, fees); err != nil {
+		fmt.Println(err)
+	}
 }
 
 func readPegKeepersFees() []interfaces.PegKeeperFee {
+
+	fees := make([]interfaces.PegKeeperFee, 0)
+	b, err := utils.ReadBucketFile(BUCKET_PEGKEEPER_FEE_FILE)
+	if err == nil && len(b) > 0 {
+		if err := json.Unmarshal(b, &fees); err != nil {
+			log.Fatal(err)
+		}
+
+		return fees
+	}
 
 	if !utils.FileExists(PEGKEEPER_FEE_DATA) {
 		return make([]interfaces.PegKeeperFee, 0)
@@ -442,7 +476,6 @@ func readPegKeepersFees() []interfaces.PegKeeperFee {
 		log.Fatal(err)
 	}
 
-	fees := make([]interfaces.PegKeeperFee, 0)
 	if err := json.Unmarshal([]byte(file), &fees); err != nil {
 		log.Fatal(err)
 	}
@@ -557,5 +590,10 @@ func IntegrateHistoricalData() {
 
 	if err := os.WriteFile(PEGKEEPER_VOLUME_DATA, fileVolume, 0644); err != nil {
 		log.Fatal(err)
+	}
+
+	// Google cloud
+	if err := utils.WriteBucketFile(BUCKET_PEGKEEPER_VOLUME_FILE, realVolumes); err != nil {
+		fmt.Println(err)
 	}
 }
