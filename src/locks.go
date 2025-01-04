@@ -36,6 +36,8 @@ func FetchLocks(client *ethclient.Client, currentBlock uint64) {
 	// Read config and previous locks file
 	config := utils.ReadConfig(locks_config)
 	locks := readLocks()
+	writeLocksPerUser(locks, make([]interfaces.Lock, 0))
+	return
 
 	// Fetch new locks
 	newLocks := fetchVeCRVLocks(client, currentBlock, config)
@@ -44,7 +46,7 @@ func FetchLocks(client *ethclient.Client, currentBlock uint64) {
 	// Write files
 	writeLocks(locks)
 	computeLocksStats(locks)
-	writeLocksPerUser(locks, newLocks)
+
 	writeUsersLocks(locks)
 
 	// Write config
@@ -155,14 +157,14 @@ func computeLocksStats(locks []interfaces.Lock) {
 		_, exists = wrappersLocks[currentPeriod]
 		if !exists {
 			wrappersLocks[currentPeriod] = make(map[common.Address]*big.Int)
-			for _, wrapper := range WRAPPERS {
+			for _, wrapper := range utils.WRAPPERS {
 				wrappersLocks[currentPeriod][wrapper.Address] = big.NewInt(0)
 			}
 		}
 
 		locksPerPeriod[currentPeriod] = new(big.Int).Add(value, lock.Value)
 
-		for _, wrapper := range WRAPPERS {
+		for _, wrapper := range utils.WRAPPERS {
 			if strings.EqualFold(wrapper.Address.Hex(), lock.User.Hex()) {
 				wrappersLocks[currentPeriod][wrapper.Address] = new(big.Int).Add(wrappersLocks[currentPeriod][wrapper.Address], lock.Value)
 				break
@@ -177,7 +179,7 @@ func computeLocksStats(locks []interfaces.Lock) {
 			Timestamp: period,
 		}
 
-		for _, wrapper := range WRAPPERS {
+		for _, wrapper := range utils.WRAPPERS {
 			switch wrapper.Address.Hex() {
 			case utils.STAKEDAO_LOCKERS.Hex():
 				statLock.StakeDAO = utils.Quo(wrappersLocks[period][wrapper.Address], 18)
@@ -261,26 +263,25 @@ func writeLocks(locks []interfaces.Lock) {
 func writeLocksPerUser(locks []interfaces.Lock, newLocks []interfaces.Lock) {
 	locksPerUser := make(map[common.Address][]interfaces.Lock)
 
-	for _, lock := range newLocks {
+	for _, lock := range locks {
 		_, exists := locksPerUser[lock.User]
 		if !exists {
 			locksPerUser[lock.User] = make([]interfaces.Lock, 0)
 		}
+
+		locksPerUser[lock.User] = append(locksPerUser[lock.User], lock)
 	}
 
+	fmt.Println(len(locksPerUser), "users to save")
+	i := 0
 	for user, locks := range locksPerUser {
 
-		allUserLocks := make([]interfaces.Lock, 0)
-		for _, lock := range locks {
-			if lock.User != user {
-				continue
-			}
-			allUserLocks = append(allUserLocks, lock)
-		}
-
-		if err := utils.WriteBucketFile(BUCKET_DIR+"/users/"+strings.ToLower(user.Hex())+".json", allUserLocks); err != nil {
+		if err := utils.WriteBucketFile(BUCKET_DIR+"/users/"+strings.ToLower(user.Hex())+".json", locks); err != nil {
 			fmt.Println(err)
 		}
+
+		i++
+		fmt.Println(i, "/", len(locksPerUser))
 	}
 }
 
