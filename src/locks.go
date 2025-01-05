@@ -263,25 +263,26 @@ func writeLocks(locks []interfaces.Lock) {
 func writeLocksPerUser(locks []interfaces.Lock, newLocks []interfaces.Lock) {
 	locksPerUser := make(map[common.Address][]interfaces.Lock)
 
-	for _, lock := range locks {
+	for _, lock := range newLocks {
 		_, exists := locksPerUser[lock.User]
 		if !exists {
 			locksPerUser[lock.User] = make([]interfaces.Lock, 0)
 		}
-
-		locksPerUser[lock.User] = append(locksPerUser[lock.User], lock)
 	}
 
-	fmt.Println(len(locksPerUser), "users to save")
-	i := 0
 	for user, locks := range locksPerUser {
 
-		if err := utils.WriteBucketFile(BUCKET_DIR+"/users/"+strings.ToLower(user.Hex())+".json", locks); err != nil {
-			fmt.Println(err)
+		allUserLocks := make([]interfaces.Lock, 0)
+		for _, lock := range locks {
+			if lock.User != user {
+				continue
+			}
+			allUserLocks = append(allUserLocks, lock)
 		}
 
-		i++
-		fmt.Println(i, "/", len(locksPerUser))
+		if err := utils.WriteBucketFile(BUCKET_DIR+"/users/"+strings.ToLower(user.Hex())+".json", allUserLocks); err != nil {
+			fmt.Println(err)
+		}
 	}
 }
 
