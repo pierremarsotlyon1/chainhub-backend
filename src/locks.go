@@ -27,6 +27,7 @@ const (
 	BUCKET_LOCKS_FILE       = BUCKET_DIR + "/locks.json"
 	BUCKET_STATS_LOCKS_FILE = BUCKET_DIR + "/stats-locks.json"
 	BUCKET_USERS_LOCKS_FILE = BUCKET_DIR + "/users-locks.json"
+	BUCKET_LAST_LOCKS_FILE  = BUCKET_DIR + "/last-locks.json"
 )
 
 func FetchLocks(client *ethclient.Client, currentBlock uint64) {
@@ -46,6 +47,7 @@ func FetchLocks(client *ethclient.Client, currentBlock uint64) {
 	computeLocksStats(locks)
 	writeLocksPerUser(locks, newLocks)
 	writeUsersLocks(locks)
+	writeLastLocks(locks)
 
 	// Write config
 	utils.WriteConfig(config, currentBlock, locks_config)
@@ -196,14 +198,14 @@ func computeLocksStats(locks []interfaces.Lock) {
 }
 
 func writeStatsLocks(statsLock []interfaces.StatsLock) {
-	file, err := json.Marshal(statsLock)
+	/*file, err := json.Marshal(statsLock)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	if err := os.WriteFile(STATS_LOCK_PATH, file, 0644); err != nil {
 		log.Fatal(err)
-	}
+	}*/
 
 	if err := utils.WriteBucketFile(BUCKET_STATS_LOCKS_FILE, statsLock); err != nil {
 		fmt.Println(err)
@@ -243,14 +245,14 @@ func readLocks() []interfaces.Lock {
 }
 
 func writeLocks(locks []interfaces.Lock) {
-	file, err := json.Marshal(locks)
+	/*file, err := json.Marshal(locks)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	if err := os.WriteFile(LOCKS_PATH, file, 0644); err != nil {
 		log.Fatal(err)
-	}
+	}*/
 
 	if err := utils.WriteBucketFile(BUCKET_LOCKS_FILE, locks); err != nil {
 		fmt.Println(err)
@@ -259,16 +261,12 @@ func writeLocks(locks []interfaces.Lock) {
 
 // Write only new locks
 func writeLocksPerUser(locks []interfaces.Lock, newLocks []interfaces.Lock) {
-	locksPerUser := make(map[common.Address][]interfaces.Lock)
-
+	newUsers := make(map[common.Address]bool)
 	for _, lock := range newLocks {
-		_, exists := locksPerUser[lock.User]
-		if !exists {
-			locksPerUser[lock.User] = make([]interfaces.Lock, 0)
-		}
+		newUsers[lock.User] = true
 	}
 
-	for user, locks := range locksPerUser {
+	for user := range newUsers {
 
 		allUserLocks := make([]interfaces.Lock, 0)
 		for _, lock := range locks {
@@ -300,6 +298,25 @@ func writeUsersLocks(locks []interfaces.Lock) {
 	}
 
 	if err := utils.WriteBucketFile(BUCKET_USERS_LOCKS_FILE, users); err != nil {
+		fmt.Println(err)
+	}
+}
+
+// Write a file with all users addresses who locked
+func writeLastLocks(locks []interfaces.Lock) {
+	// Sort
+	sort.Slice(locks, func(i, j int) bool { return locks[i].Timestamp > locks[j].Timestamp })
+
+	length := len(locks)
+	if length > 100 {
+		length = 100
+	}
+
+	locksClone := make([]interfaces.Lock, length)
+	for i := 0; i < length; i++ {
+		locksClone[i] = locks[i]
+	}
+	if err := utils.WriteBucketFile(BUCKET_LAST_LOCKS_FILE, locksClone); err != nil {
 		fmt.Println(err)
 	}
 }
