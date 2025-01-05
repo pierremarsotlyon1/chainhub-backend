@@ -36,8 +36,6 @@ func FetchLocks(client *ethclient.Client, currentBlock uint64) {
 	// Read config and previous locks file
 	config := utils.ReadConfig(locks_config)
 	locks := readLocks()
-	writeLocksPerUser(locks, make([]interfaces.Lock, 0))
-	return
 
 	// Fetch new locks
 	newLocks := fetchVeCRVLocks(client, currentBlock, config)
@@ -46,7 +44,7 @@ func FetchLocks(client *ethclient.Client, currentBlock uint64) {
 	// Write files
 	writeLocks(locks)
 	computeLocksStats(locks)
-
+	writeLocksPerUser(locks, newLocks)
 	writeUsersLocks(locks)
 
 	// Write config
