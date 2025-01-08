@@ -6,7 +6,6 @@ import (
 	"log"
 	"main/interfaces"
 	"os"
-	"time"
 )
 
 func ReadConfig(path string) interfaces.Config {
@@ -47,10 +46,10 @@ func ReadConfig(path string) interfaces.Config {
 }
 
 func WriteConfig(config interfaces.Config, currentBlock uint64, path string) {
-	config.LastBlock = currentBlock
-	config.LastUpdate = uint64(time.Now().Unix())
+	//config.LastBlock = currentBlock
+	//config.LastUpdate = uint64(time.Now().Unix())
 
-	// Write in GitHub
+	/*// Write in GitHub
 	file, err := json.Marshal(config)
 	if err != nil {
 		log.Fatal(err)
@@ -58,7 +57,7 @@ func WriteConfig(config interfaces.Config, currentBlock uint64, path string) {
 
 	if err := os.WriteFile(path, file, 0644); err != nil {
 		log.Fatal(err)
-	}
+	}*/
 
 	// Write in Google Cloud
 	bucketPath := path
