@@ -6,6 +6,7 @@ import (
 	"log"
 	"main/interfaces"
 	"os"
+	"time"
 )
 
 func ReadConfig(path string) interfaces.Config {
@@ -46,8 +47,8 @@ func ReadConfig(path string) interfaces.Config {
 }
 
 func WriteConfig(config interfaces.Config, currentBlock uint64, path string) {
-	//config.LastBlock = currentBlock
-	//config.LastUpdate = uint64(time.Now().Unix())
+	config.LastBlock = currentBlock
+	config.LastUpdate = uint64(time.Now().Unix())
 
 	/*// Write in GitHub
 	file, err := json.Marshal(config)
