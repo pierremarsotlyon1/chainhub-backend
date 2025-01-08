@@ -50,6 +50,9 @@ var claim_topic = common.HexToHash("0x9cdcf2f7714cca3508c7f0110b04a90a80a3a8dd0e
 
 func ClaimWeeklyFees(client *ethclient.Client, currentBlock uint64) {
 	config := utils.ReadConfig(claim_weekly_fees_config)
+	if config.LastBlock == 0 {
+		config.LastBlock = 21579985
+	}
 
 	for _, feeDistributor := range feeDistributors {
 		fmt.Println("Fetching new events for distributor", feeDistributor.Address)
