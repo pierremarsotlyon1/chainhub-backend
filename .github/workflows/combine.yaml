@@ -44,4 +44,5 @@ jobs:
           go run ./main.go peg
           go run ./main.go votes
           go run ./main.go wrappersSwaps
+          go run ./main.go claimWeeklyFees
 
