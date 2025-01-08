@@ -12,7 +12,7 @@ import (
 )
 
 var ALCHEMY_RPC_URL = ""
-var RPC_LOCAL_NODE = "/datastore/.ethereum/geth.ipc"
+var RPC_LOCAL_NODE = "/root/geth/data/geth/geth.ipc"
 
 // First arg : script to execut
 // Second arg : alchemy api key, if not set, get default one
@@ -81,5 +81,7 @@ func main() {
 		src.WeeklyFees(client)
 	case "wrappersSwaps":
 		src.WrappersSwap(client, lastestBlock.NumberU64())
+	case "claimWeeklyFees":
+		src.ClaimWeeklyFees(client, lastestBlock.NumberU64())
 	}
 }
