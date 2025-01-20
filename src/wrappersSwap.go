@@ -162,7 +162,23 @@ func readWrappersSwaps() []interfaces.PoolTokenExchange {
 }
 
 func writeWrappersSwaps(swaps []interfaces.PoolTokenExchange) {
-	if err := utils.WriteBucketFile(bucket_wrappers_swaps, swaps); err != nil {
+	// Remove duplicate
+	newSwaps := make([]interfaces.PoolTokenExchange, 0)
+	for _, swap := range swaps {
+		found := false
+		for _, newSwap := range newSwaps {
+			if swap.TxHash.Hex() == newSwap.TxHash.Hex() {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			newSwaps = append(newSwaps, swap)
+		}
+	}
+
+	if err := utils.WriteBucketFile(bucket_wrappers_swaps, newSwaps); err != nil {
 		fmt.Println(err)
 	}
 }
