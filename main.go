@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"main/src"
+	"main/src/scrvusd"
 	"main/utils"
 	"os"
 
@@ -83,5 +84,7 @@ func main() {
 		src.WrappersSwap(client, lastestBlock.NumberU64())
 	case "claimWeeklyFees":
 		src.ClaimWeeklyFees(client, lastestBlock.NumberU64())
+	case "scrvusdDistributions":
+		scrvusd.ScrvusdDistributions(client, lastestBlock.NumberU64())
 	}
 }
