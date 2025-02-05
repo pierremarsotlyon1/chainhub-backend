@@ -42,7 +42,9 @@ func ReadBucketFile(path string) ([]byte, error) {
 	}
 	defer cli.Close()
 
-	fileReader, err := cli.Bucket(crvhub_bucket).Object(path).NewReader(ctx)
+	obj := cli.Bucket(crvhub_bucket).Object(path)
+
+	fileReader, err := obj.ReadCompressed(true).NewReader(ctx)
 	if err != nil {
 		return nil, err
 	}

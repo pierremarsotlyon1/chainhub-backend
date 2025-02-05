@@ -53,6 +53,7 @@ func FetchVotes(client *ethclient.Client, currentBlock uint64) {
 	if from == 0 {
 		from = 10648598
 	}
+
 	query := ethereum.FilterQuery{
 		FromBlock: big.NewInt(int64(from) + 1),
 		ToBlock:   big.NewInt(int64(currentBlock)),
@@ -391,15 +392,6 @@ func readVotes() []interfaces.Vote {
 }
 
 func writeVotes(votes []interfaces.Vote) {
-	file, err := json.Marshal(votes)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if err := os.WriteFile(VOTES_PATH, file, 0644); err != nil {
-		log.Fatal(err)
-	}
-
 	if err := utils.WriteBucketFile(BUCKET_VOTES_FILE, votes); err != nil {
 		fmt.Println(err)
 	}
