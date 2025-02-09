@@ -227,6 +227,22 @@ func FetchVotes(client *ethclient.Client, currentBlock uint64) {
 	utils.WriteConfig(config, currentBlock, votes_config)
 }
 
+func removeDuplicateVoters(vote interfaces.Vote, voters []interfaces.Voter) []interfaces.Voter {
+	seen := make(map[common.Address]bool)
+	uniqueVoters := []interfaces.Voter{}
+
+	for _, v := range voters {
+		if !seen[v.Voter] {
+			seen[v.Voter] = true
+			uniqueVoters = append(uniqueVoters, v)
+		} else if vote.Id.Cmp(big.NewInt(954)) == 0 {
+			fmt.Println(v.Voter)
+		}
+	}
+
+	return uniqueVoters
+}
+
 func getTenderlySimulation(vote interfaces.Vote) (string, error) {
 	// Create the fork before the snapshot block
 	forkRpcUrl, forkId, _, err := createFork("1", int64(vote.SnapshotBlock)-BLOCK_BEFORE_SNAPSHOT)
