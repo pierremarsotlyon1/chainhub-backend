@@ -135,7 +135,7 @@ func FetchGaugeWeights(alchemyMainnetRpc string) {
 				}
 
 				// Search decimals token in curve api
-				decimals, err := utils.GetTokenDecimals(client, coin)
+				decimals, err := utils.GetTokenDecimals(client, "ethereum", coin)
 				if err != nil {
 					fmt.Println(coin.Hex())
 					continue

@@ -55,7 +55,7 @@ func main() {
 
 	switch functionToExecute {
 	case "bounties":
-		src.FetchBounties(client, lastestBlock.NumberU64(), ALCHEMY_RPC_URL)
+		src.FetchBounties(client, lastestBlock.NumberU64(), ALCHEMY_RPC_URL, utils.GoDotEnvVariable("DRPC_API_KEY"))
 	case "locks":
 		src.FetchLocks(client, lastestBlock.NumberU64())
 	case "votes":

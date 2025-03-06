@@ -9,10 +9,10 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
-var tokens = make(map[common.Address]uint8, 0)
+var tokens = make(map[string]map[common.Address]uint8, 0)
 var tokenMutex sync.Mutex
 
-func GetTokenDecimals(client *ethclient.Client, token common.Address) (uint8, error) {
+func GetTokenDecimals(client *ethclient.Client, tokenRewardChain string, token common.Address) (uint8, error) {
 	if strings.EqualFold(ETH_DEFAULT.Hex(), token.Hex()) {
 		return 18, nil
 	}
@@ -20,9 +20,14 @@ func GetTokenDecimals(client *ethclient.Client, token common.Address) (uint8, er
 	tokenMutex.Lock()
 	defer tokenMutex.Unlock()
 
-	decimals, exists := tokens[token]
+	_, exists := tokens[tokenRewardChain]
 	if exists {
-		return decimals, nil
+		decimals, exists := tokens[tokenRewardChain][token]
+		if exists {
+			return decimals, nil
+		}
+	} else {
+		tokens[tokenRewardChain] = make(map[common.Address]uint8)
 	}
 
 	tokenContract, err := erc20.NewErc20(token, client)
@@ -35,7 +40,7 @@ func GetTokenDecimals(client *ethclient.Client, token common.Address) (uint8, er
 		return 0, err
 	}
 
-	tokens[token] = tokenDecimals
+	tokens[tokenRewardChain][token] = tokenDecimals
 
 	return tokenDecimals, nil
 }
