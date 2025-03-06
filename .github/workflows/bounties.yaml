@@ -9,6 +9,7 @@ env:
   ALCHEMY_APIKEY: ${{ secrets.ALCHEMY_APIKEY }}
   ALCHEMY_APIKEY_2: ${{ secrets.ALCHEMY_APIKEY_2 }}
   INFURA_APIKEY: ${{ secrets.INFURA_APIKEY }}
+  DRPC_API_KEY: ${{ secrets.DRPC_API_KEY }}
 
 jobs:
   build: # make sure build/ci work properly
