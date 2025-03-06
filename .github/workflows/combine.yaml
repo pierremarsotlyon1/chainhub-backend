@@ -16,6 +16,7 @@ env:
   TENDERLY_PROJECT_SLUG: ${{ secrets.TENDERLY_PROJECT_SLUG }}
   TENDERLY_ACCESS_KEY: ${{ secrets.TENDERLY_ACCESS_KEY }}
   GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+  DRPC_API_KEY: ${{ secrets.DRPC_API_KEY }}
 
 jobs:
   build: # make sure build/ci work properly
