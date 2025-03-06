@@ -18,7 +18,10 @@ func ReadConfig(path string) interfaces.Config {
 	}
 	b, err := ReadBucketFile(bucketFile)
 	if err != nil {
-		log.Fatal(err)
+		return interfaces.Config{
+			LastBlock:  0,
+			LastUpdate: 0,
+		}
 	}
 
 	if err := json.Unmarshal(b, &config); err != nil {

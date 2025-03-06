@@ -64,9 +64,12 @@ func GetHistoricalPriceTokenPrice(token common.Address, chainName string, timest
 	return obj.Price
 }
 
-func GetPriceFromCurvePools(tokenAddress common.Address, curvePools []interfaces.CurvePool) float64 {
+func GetPriceFromCurvePools(tokenAddress common.Address, tokenRewardChain string, curvePools []interfaces.CurvePool) float64 {
 
 	for _, pool := range curvePools {
+		if !strings.EqualFold(pool.BlockchainId, tokenRewardChain) {
+			continue
+		}
 		for _, coin := range pool.Coins {
 			if strings.EqualFold(coin.Address, tokenAddress.Hex()) && coin.UsdPrice != nil {
 				return coin.UsdPrice.(float64)
