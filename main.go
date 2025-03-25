@@ -88,5 +88,7 @@ func main() {
 		scrvusd.ScrvusdDistributions(client, lastestBlock.NumberU64())
 	case "scrvusdApys":
 		scrvusd.ScrvusdApys(client, lastestBlock.NumberU64())
+	case "curveApiCache":
+		src.CurveApiCache()
 	}
 }

@@ -48,4 +48,5 @@ jobs:
           go run ./main.go claimWeeklyFees
           go run ./main.go scrvusdDistributions
           go run ./main.go scrvusdApys
+          go run ./main.go curveApiCache
 
