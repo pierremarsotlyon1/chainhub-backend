@@ -61,6 +61,12 @@ var VOTEMARKET_VMV2_ADDRESSES_V1 = []interfaces.VmV2Config{
 				},
 				BlockNumberDeployed: 269278364,
 			},
+			{
+				Addresses: []common.Address{
+					common.HexToAddress("0x8c2c5A295450DDFf4CB360cA73FCCC12243D14D9"),
+				},
+				BlockNumberDeployed: 306978544,
+			},
 		},
 	},
 	{
@@ -73,6 +79,12 @@ var VOTEMARKET_VMV2_ADDRESSES_V1 = []interfaces.VmV2Config{
 					common.HexToAddress("0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5"),
 				},
 				BlockNumberDeployed: 127353052,
+			},
+			{
+				Addresses: []common.Address{
+					common.HexToAddress("0x8c2c5A295450DDFf4CB360cA73FCCC12243D14D9"),
+				},
+				BlockNumberDeployed: 132095453,
 			},
 		},
 	},
@@ -87,6 +99,12 @@ var VOTEMARKET_VMV2_ADDRESSES_V1 = []interfaces.VmV2Config{
 				},
 				BlockNumberDeployed: 63679441,
 			},
+			{
+				Addresses: []common.Address{
+					common.HexToAddress("0x8c2c5A295450DDFf4CB360cA73FCCC12243D14D9"),
+				},
+				BlockNumberDeployed: 68030935,
+			},
 		},
 	},
 	{
@@ -99,6 +117,12 @@ var VOTEMARKET_VMV2_ADDRESSES_V1 = []interfaces.VmV2Config{
 					common.HexToAddress("0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5"),
 				},
 				BlockNumberDeployed: 21757790,
+			},
+			{
+				Addresses: []common.Address{
+					common.HexToAddress("0x8c2c5A295450DDFf4CB360cA73FCCC12243D14D9"),
+				},
+				BlockNumberDeployed: 26500169,
 			},
 		},
 	},
