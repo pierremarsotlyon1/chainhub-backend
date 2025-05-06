@@ -23,5 +23,13 @@ func GetIpfs(ipfsId string) string {
 		return ""
 	}
 
-	return ipfs.Text
+	if len(ipfs.Text) > 0 {
+		return ipfs.Text
+	}
+
+	if len(ipfs.Description) > 0 {
+		return ipfs.Description
+	}
+
+	return ""
 }
