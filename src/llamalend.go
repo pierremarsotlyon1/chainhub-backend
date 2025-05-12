@@ -38,7 +38,7 @@ var LLAMALEND_FACTORIES = []interfaces.LlamalendConfig{
 		MarketName:      "ethereum",
 		TimestampDeploy: 1710294146,
 		BlockDeploy:     19422660,
-		RpcUrl:          "https://eth-mainnet.g.alchemy.com/v2/" + utils.GoDotEnvVariable("ALCHEMY_APIKEY_3"),
+		RpcUrl:          "https://lb.drpc.org/ogrpc?network=ethereum&dkey=" + utils.GoDotEnvVariable("DRPC_API_KEY"),
 		ConfigPath:      LLAMALEND_CONFIGS_MAINNET,
 	},
 	{
@@ -47,7 +47,7 @@ var LLAMALEND_FACTORIES = []interfaces.LlamalendConfig{
 		MarketName:      "arbitrum",
 		TimestampDeploy: 1711266146,
 		BlockDeploy:     193652535,
-		RpcUrl:          "https://arb-mainnet.g.alchemy.com/v2/" + utils.GoDotEnvVariable("ALCHEMY_APIKEY_3"),
+		RpcUrl:          "https://lb.drpc.org/ogrpc?network=arbitrum&dkey=" + utils.GoDotEnvVariable("DRPC_API_KEY"),
 		ConfigPath:      LLAMALEND_CONFIGS_ARB,
 	},
 }
