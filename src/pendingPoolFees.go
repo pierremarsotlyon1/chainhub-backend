@@ -260,40 +260,45 @@ func estimatedWithCowswapBurner(earned map[string]float64, mainnetClient *ethcli
 	}
 
 	// Fetch collected fees events
-	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(int64(forwardBlockNumber)),
-		ToBlock:   currentBlock.Number(),
-		Addresses: []common.Address{utils.CRVUSD_ADDRESS},
-		Topics: [][]common.Hash{
-			{common.HexToHash("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef")},
-			{addressToTopic(utils.CRV_USD_FEE_SPLITTER)},
-			{addressToTopic(utils.FEE_COLLECTOR_MAINNET)},
-		},
-	}
-
 	crvUsdFeesCollected := 0.0
 
-	logs, err := client.FilterLogs(context.Background(), query)
-	if err != nil {
-		fmt.Println(err)
-		return err
-	}
-
-	crvusdContract, err := erc20.NewErc20(utils.CRVUSD_ADDRESS, client)
-	if err != nil {
-		fmt.Println(err)
-		return err
-	}
-
-	for _, vLog := range logs {
-
-		event, err := crvusdContract.ParseTransfer(vLog)
-		if err != nil {
-			fmt.Println(err)
-			continue
+	err = utils.ForEachBlockRange(forwardBlockNumber, currentBlock.NumberU64(), 499, func(start uint64, end uint64) error {
+		query := ethereum.FilterQuery{
+			FromBlock: big.NewInt(int64(start)),
+			ToBlock:   big.NewInt(int64(end)),
+			Addresses: []common.Address{utils.CRVUSD_ADDRESS},
+			Topics: [][]common.Hash{
+				{common.HexToHash("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef")},
+				{addressToTopic(utils.CRV_USD_FEE_SPLITTER)},
+				{addressToTopic(utils.FEE_COLLECTOR_MAINNET)},
+			},
 		}
 
-		crvUsdFeesCollected += utils.Quo(event.Value, 18)
+		logs, err := client.FilterLogs(context.Background(), query)
+		if err != nil {
+			return fmt.Errorf("FilterLogs error in estimatedWithCowswapBurner: %w", err)
+		}
+
+		crvusdContract, err := erc20.NewErc20(utils.CRVUSD_ADDRESS, client)
+		if err != nil {
+			return fmt.Errorf("ERC20 contract error: %w", err)
+		}
+
+		for _, vLog := range logs {
+			event, err := crvusdContract.ParseTransfer(vLog)
+			if err != nil {
+				fmt.Println("ParseTransfer error:", err)
+				continue
+			}
+			crvUsdFeesCollected += utils.Quo(event.Value, 18)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		fmt.Println("pagination error in estimatedWithCowswapBurner:", err)
+		return err
 	}
 
 	// Create tokens array
@@ -691,60 +696,69 @@ func estimatedWithSimulation(earned map[string]float64, client *ethclient.Client
 }
 
 func fetchLastDistribution(client *ethclient.Client, currentBlock uint64, lastBlock uint64, lastTimestamp uint64, lastDistributionAmount uint64) (uint64, uint64) {
-
 	from := lastBlock
 	if from == 0 {
 		from = 19526061
 	}
-	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(int64(from) + 1),
-		ToBlock:   big.NewInt(int64(currentBlock)),
-		Addresses: []common.Address{utils.CRVUSD_ADDRESS},
-		Topics:    [][]common.Hash{{common.HexToHash("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef")}},
-	}
-
-	logs, err := client.FilterLogs(context.Background(), query)
-	if err != nil {
-		return lastTimestamp, lastDistributionAmount
-	}
 
 	timestamp := lastTimestamp
-	for _, vLog := range logs {
-		contract, err := erc20.NewErc20(vLog.Address, client)
+
+	err := utils.ForEachBlockRange(from, currentBlock, 499, func(start uint64, end uint64) error {
+		query := ethereum.FilterQuery{
+			FromBlock: big.NewInt(int64(start)),
+			ToBlock:   big.NewInt(int64(end)),
+			Addresses: []common.Address{utils.CRVUSD_ADDRESS},
+			Topics:    [][]common.Hash{{common.HexToHash("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef")}},
+		}
+
+		logs, err := client.FilterLogs(context.Background(), query)
 		if err != nil {
-			fmt.Println(err)
-			continue
+			return fmt.Errorf("FilterLogs error: %w", err)
 		}
 
-		event, err := contract.ParseTransfer(vLog)
-		if err != nil {
-			fmt.Println(err)
-			continue
+		for _, vLog := range logs {
+			contract, err := erc20.NewErc20(vLog.Address, client)
+			if err != nil {
+				fmt.Println("ERC20 init error:", err)
+				continue
+			}
+
+			event, err := contract.ParseTransfer(vLog)
+			if err != nil {
+				fmt.Println("ParseTransfer error:", err)
+				continue
+			}
+
+			if !strings.EqualFold(event.To.Hex(), utils.FEE_DISTRIBUTOR_MAINNET.Hex()) {
+				continue
+			}
+
+			if !strings.EqualFold(utils.HOOKER_MAINNET.Hex(), event.From.Hex()) {
+				continue
+			}
+
+			block, err := client.BlockByNumber(context.Background(), big.NewInt(int64(vLog.BlockNumber)))
+			if err != nil {
+				fmt.Println("BlockByNumber error:", err)
+				continue
+			}
+
+			if block.Time()-timestamp > 2*utils.DAY_TO_SEC {
+				lastDistributionAmount = 0
+			}
+
+			timestamp = block.Time()
+			lastDistributionAmount += uint64(utils.Quo(event.Value, 18))
 		}
 
-		if !strings.EqualFold(event.To.Hex(), utils.FEE_DISTRIBUTOR_MAINNET.Hex()) {
-			continue
-		}
+		return nil
+	})
 
-		if !strings.EqualFold(utils.HOOKER_MAINNET.Hex(), event.From.Hex()) {
-			continue
-		}
-
-		block, err := client.BlockByNumber(context.Background(), big.NewInt(int64(vLog.BlockNumber)))
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-
-		if block.Time()-timestamp > 2*utils.DAY_TO_SEC {
-			lastDistributionAmount = 0
-		}
-		timestamp = block.Time()
-		lastDistributionAmount += uint64(utils.Quo(event.Value, 18))
+	if err != nil {
+		fmt.Println("fetchLastDistribution error:", err)
 	}
 
 	return timestamp, lastDistributionAmount
-
 }
 
 func getPoolsWithWithdrawAdminFee(client *ethclient.Client, pools []interfaces.CurvePool, chain string) ([]common.Address, []common.Address) {

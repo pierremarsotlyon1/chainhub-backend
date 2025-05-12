@@ -267,62 +267,75 @@ func collectData(wgCollectData *sync.WaitGroup, feesChan chan interfaces.PegKeep
 		FeesPending:   utils.Quo(currentProfit, 18),
 	}
 }
-
 func getFees(feesChan chan interfaces.PegKeeperFee, client *ethclient.Client, pegKeeperAddress common.Address, opts *bind.CallOpts, config interfaces.Config) {
 	from := config.LastBlock
 	if from == 0 {
 		from = 17258030
 	}
 
-	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(int64(from) + 1),
-		ToBlock:   opts.BlockNumber,
-		Addresses: []common.Address{pegKeeperAddress},
-		Topics:    [][]common.Hash{{common.HexToHash("0x357d905f1831209797df4d55d79c5c5bf1d9f7311c976afd05e13d881eab9bc8")}},
-	}
-
-	logs, err := client.FilterLogs(context.Background(), query)
-	if err != nil {
+	if opts.BlockNumber == nil {
+		fmt.Println("Block number must be set in opts")
 		return
 	}
+
+	to := opts.BlockNumber.Uint64()
 
 	pegKeeperContract, err := pegKeeper.NewPegKeeper(pegKeeperAddress, client)
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	poolAddress, err := pegKeeperContract.Pool(opts)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	for _, vLog := range logs {
+	err = utils.ForEachBlockRange(from, to, 499, func(start uint64, end uint64) error {
+		query := ethereum.FilterQuery{
+			FromBlock: big.NewInt(int64(start)),
+			ToBlock:   big.NewInt(int64(end)),
+			Addresses: []common.Address{pegKeeperAddress},
+			Topics:    [][]common.Hash{{common.HexToHash("0x357d905f1831209797df4d55d79c5c5bf1d9f7311c976afd05e13d881eab9bc8")}},
+		}
 
-		block, err := client.BlockByNumber(context.Background(), big.NewInt(int64(vLog.BlockNumber)))
+		logs, err := client.FilterLogs(context.Background(), query)
 		if err != nil {
-			fmt.Println("BlockByNumber", poolAddress, err)
-			continue
+			return fmt.Errorf("getFees logs error: %w", err)
 		}
 
-		event, err := pegKeeperContract.ParseProfit(vLog)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
+		for _, vLog := range logs {
+			block, err := client.BlockByNumber(context.Background(), big.NewInt(int64(vLog.BlockNumber)))
+			if err != nil {
+				fmt.Println("BlockByNumber", poolAddress, err)
+				continue
+			}
 
-		amount := utils.Quo(event.LpAmount, 18)
-		lpPrice := utils.GetHistoricalPriceTokenPrice(poolAddress, "ethereum", uint64(time.Now().Unix()))
-		if lpPrice == 0 {
-			lpPrice = 1
-		}
+			event, err := pegKeeperContract.ParseProfit(vLog)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
 
-		feesChan <- interfaces.PegKeeperFee{
-			PegKeeperAddress: pegKeeperAddress,
-			Amount:           amount,
-			LpPrice:          lpPrice,
-			TxHash:           vLog.TxHash,
-			BlockNumber:      vLog.BlockNumber,
-			BlockTimestamp:   block.Time(),
+			amount := utils.Quo(event.LpAmount, 18)
+			lpPrice := utils.GetHistoricalPriceTokenPrice(poolAddress, "ethereum", uint64(time.Now().Unix()))
+			if lpPrice == 0 {
+				lpPrice = 1
+			}
+
+			feesChan <- interfaces.PegKeeperFee{
+				PegKeeperAddress: pegKeeperAddress,
+				Amount:           amount,
+				LpPrice:          lpPrice,
+				TxHash:           vLog.TxHash,
+				BlockNumber:      vLog.BlockNumber,
+				BlockTimestamp:   block.Time(),
+			}
 		}
+		return nil
+	})
+
+	if err != nil {
+		fmt.Println("getFees error:", err)
 	}
 }
 

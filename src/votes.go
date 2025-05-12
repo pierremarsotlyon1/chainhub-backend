@@ -43,171 +43,167 @@ const (
 const BLOCK_BEFORE_SNAPSHOT = 10
 
 func FetchVotes(client *ethclient.Client, currentBlock uint64) {
-
 	fmt.Println("Fetching votes")
 
 	config := utils.ReadConfig(votes_config)
 
-	// Read new vote event to fetch ipfs description
 	from := config.LastBlock
 	if from == 0 {
 		from = 10648598
 	}
 
-	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(int64(from) + 1),
-		ToBlock:   big.NewInt(int64(currentBlock)),
-		Addresses: []common.Address{CURVE_OWNERSHIP_VOTER, CURVE_PARAMETER_VOTER},
-		Topics: [][]common.Hash{{
-			VOTE_CREATE_TOPIC,
-			VOTE_EXECUTED_TOPIC,
-			CAST_VOTE_TOPIC,
-		}},
-	}
-
-	logs, err := client.FilterLogs(context.Background(), query)
-	if err != nil {
-		panic(err)
-	}
-
 	votes := readVotes()
-	fmt.Println("Already ", len(votes), "votes")
+	fmt.Println("Already", len(votes), "votes")
 
-	for _, vLog := range logs {
-		voterContract, err := voter.NewVoter(vLog.Address, client)
+	err := utils.ForEachBlockRange(from, currentBlock, 499, func(start uint64, end uint64) error {
+		query := ethereum.FilterQuery{
+			FromBlock: big.NewInt(int64(start)),
+			ToBlock:   big.NewInt(int64(end)),
+			Addresses: []common.Address{CURVE_OWNERSHIP_VOTER, CURVE_PARAMETER_VOTER},
+			Topics: [][]common.Hash{{
+				VOTE_CREATE_TOPIC,
+				VOTE_EXECUTED_TOPIC,
+				CAST_VOTE_TOPIC,
+			}},
+		}
+
+		logs, err := client.FilterLogs(context.Background(), query)
 		if err != nil {
-			panic(err)
+			return fmt.Errorf("FetchVotes logs error: %w", err)
 		}
 
-		if strings.EqualFold(vLog.Topics[0].Hex(), VOTE_CREATE_TOPIC.Hex()) {
-			event, err := voterContract.ParseStartVote(vLog)
-			if err != nil {
-				fmt.Println(err)
-				continue
-			}
-
-			// Check if we didn't already added it
-			found := false
-			for _, vote := range votes {
-				if strings.EqualFold(vote.Voter.Hex(), vLog.Address.Hex()) && event.VoteId.Cmp(vote.Id) == 0 {
-					found = true
-					break
-				}
-			}
-
-			if found {
-				continue
-			}
-
-			// Get vote for extra data
-			v, err := voterContract.GetVote(nil, event.VoteId)
+		for _, vLog := range logs {
+			voterContract, err := voter.NewVoter(vLog.Address, client)
 			if err != nil {
 				panic(err)
 			}
 
-			// Fetch voteTime to calculate vote end timestamp
-			voteTime, err := voterContract.VoteTime(nil)
-			if err != nil {
-				panic(err)
-			}
-
-			// Check type
-			isOwnership := strings.EqualFold(vLog.Address.Hex(), CURVE_OWNERSHIP_VOTER.Hex())
-
-			voteType := PARAMETER
-			if isOwnership {
-				voteType = OWNERSHIP
-			}
-
-			// Check ipfs
-			metadata := event.Metadata
-			ipfsId := ""
-			description := ""
-			if strings.Contains(metadata, "ipfs:") {
-				ipfsId = metadata[len("ipfs:"):]
-
-				description = utils.GetIpfs(ipfsId)
-			}
-
-			// Decode calldata
-			calldata := "0x" + hex.EncodeToString(v.Script)
-
-			votes = append(votes, interfaces.Vote{
-				Id:              event.VoteId,
-				Open:            v.Open,
-				Executed:        v.Executed,
-				StartDate:       v.StartDate,
-				EndDate:         v.StartDate + voteTime,
-				SnapshotBlock:   v.SnapshotBlock,
-				SupportRequired: v.SupportRequired,
-				MinAcceptQuorum: v.MinAcceptQuorum,
-				Yea:             v.Yea,
-				Nay:             v.Nay,
-				VotingPower:     v.VotingPower,
-				Script:          calldata,
-				VoteType:        voteType,
-				Voter:           vLog.Address,
-				IpfsId:          ipfsId,
-				Description:     description,
-				Creator:         event.Creator,
-				Voters:          make([]interfaces.Voter, 0),
-			})
-		} else if strings.EqualFold(vLog.Topics[0].Hex(), VOTE_EXECUTED_TOPIC.Hex()) || strings.EqualFold(vLog.Topics[0].Hex(), CAST_VOTE_TOPIC.Hex()) {
-
-			// Get vote id according to event
-			voteId := big.NewInt(0)
-			var executedHash common.Hash
-			var newVoter interfaces.Voter
-
-			if strings.EqualFold(vLog.Topics[0].Hex(), VOTE_EXECUTED_TOPIC.Hex()) {
-				event, err := voterContract.ParseExecuteVote(vLog)
+			switch vLog.Topics[0].Hex() {
+			case VOTE_CREATE_TOPIC.Hex():
+				event, err := voterContract.ParseStartVote(vLog)
 				if err != nil {
 					fmt.Println(err)
 					continue
 				}
-				voteId = event.VoteId
-				executedHash = vLog.TxHash
-			} else if strings.EqualFold(vLog.Topics[0].Hex(), CAST_VOTE_TOPIC.Hex()) {
-				event, err := voterContract.ParseCastVote(vLog)
-				if err != nil {
-					fmt.Println(err)
+
+				found := false
+				for _, vote := range votes {
+					if strings.EqualFold(vote.Voter.Hex(), vLog.Address.Hex()) && event.VoteId.Cmp(vote.Id) == 0 {
+						found = true
+						break
+					}
+				}
+				if found {
 					continue
 				}
-				voteId = event.VoteId
 
-				newVoter.Stake = utils.Quo(event.Stake, 18)
-				newVoter.Supports = event.Supports
-				newVoter.Voter = event.Voter
-			}
+				v, err := voterContract.GetVote(nil, event.VoteId)
+				if err != nil {
+					panic(err)
+				}
 
-			for i := 0; i < len(votes); i++ {
-				vote := votes[i]
+				voteTime, err := voterContract.VoteTime(nil)
+				if err != nil {
+					panic(err)
+				}
 
-				if strings.EqualFold(vote.Voter.Hex(), vLog.Address.Hex()) && voteId.Cmp(vote.Id) == 0 {
-					v, err := voterContract.GetVote(nil, voteId)
+				voteType := PARAMETER
+				if strings.EqualFold(vLog.Address.Hex(), CURVE_OWNERSHIP_VOTER.Hex()) {
+					voteType = OWNERSHIP
+				}
+
+				ipfsId := ""
+				description := ""
+				if strings.Contains(event.Metadata, "ipfs:") {
+					ipfsId = event.Metadata[len("ipfs:"):]
+					description = utils.GetIpfs(ipfsId)
+				}
+
+				calldata := "0x" + hex.EncodeToString(v.Script)
+
+				votes = append(votes, interfaces.Vote{
+					Id:              event.VoteId,
+					Open:            v.Open,
+					Executed:        v.Executed,
+					StartDate:       v.StartDate,
+					EndDate:         v.StartDate + voteTime,
+					SnapshotBlock:   v.SnapshotBlock,
+					SupportRequired: v.SupportRequired,
+					MinAcceptQuorum: v.MinAcceptQuorum,
+					Yea:             v.Yea,
+					Nay:             v.Nay,
+					VotingPower:     v.VotingPower,
+					Script:          calldata,
+					VoteType:        voteType,
+					Voter:           vLog.Address,
+					IpfsId:          ipfsId,
+					Description:     description,
+					Creator:         event.Creator,
+					Voters:          make([]interfaces.Voter, 0),
+				})
+
+			case VOTE_EXECUTED_TOPIC.Hex(), CAST_VOTE_TOPIC.Hex():
+				var voteId *big.Int
+				var executedHash common.Hash
+				var newVoter interfaces.Voter
+
+				if vLog.Topics[0].Hex() == VOTE_EXECUTED_TOPIC.Hex() {
+					event, err := voterContract.ParseExecuteVote(vLog)
 					if err != nil {
-						panic(err)
+						fmt.Println(err)
+						continue
 					}
+					voteId = event.VoteId
+					executedHash = vLog.TxHash
 
-					votes[i].Executed = v.Executed
-					votes[i].Open = v.Open
-					votes[i].Nay = v.Nay
-					votes[i].Yea = v.Yea
-					votes[i].ExecutedHash = executedHash
-
-					if !utils.IsNullAddress(newVoter.Voter) {
-						votes[i].Voters = append(votes[i].Voters, newVoter)
+				} else {
+					event, err := voterContract.ParseCastVote(vLog)
+					if err != nil {
+						fmt.Println(err)
+						continue
 					}
+					voteId = event.VoteId
+					newVoter = interfaces.Voter{
+						Stake:    utils.Quo(event.Stake, 18),
+						Supports: event.Supports,
+						Voter:    event.Voter,
+					}
+				}
 
-					break
+				for i := 0; i < len(votes); i++ {
+					vote := votes[i]
+
+					if strings.EqualFold(vote.Voter.Hex(), vLog.Address.Hex()) && voteId.Cmp(vote.Id) == 0 {
+						v, err := voterContract.GetVote(nil, voteId)
+						if err != nil {
+							panic(err)
+						}
+
+						votes[i].Executed = v.Executed
+						votes[i].Open = v.Open
+						votes[i].Nay = v.Nay
+						votes[i].Yea = v.Yea
+						votes[i].ExecutedHash = executedHash
+
+						if !utils.IsNullAddress(newVoter.Voter) {
+							votes[i].Voters = append(votes[i].Voters, newVoter)
+						}
+
+						break
+					}
 				}
 			}
 		}
+		return nil
+	})
+
+	if err != nil {
+		fmt.Println("FetchVotes error:", err)
+		return
 	}
 
-	// Check if we can get missing ipfs description
 	start := len(votes) - 1
-	for i := start; i >= start-20; i-- {
+	for i := start; i >= start-20 && i >= 0; i-- {
 		if votes[i].Id.Cmp(big.NewInt(int64(810))) == 1 && len(votes[i].TenderlySimulationUrl) == 0 {
 			tenderlyUrl, err := getTenderlySimulation(votes[i])
 			if err == nil {
@@ -222,8 +218,6 @@ func FetchVotes(client *ethclient.Client, currentBlock uint64) {
 	}
 
 	writeVotes(votes)
-
-	// Write config
 	utils.WriteConfig(config, currentBlock, votes_config)
 }
 

@@ -90,16 +90,21 @@ func fetchClaimWeeklyFees(client *ethclient.Client, currentBlock uint64, config 
 		from = distributor.InceptionBlock
 	}
 
-	run := true
-	pas := int64(10000)
+	const maxBlockRange = 499
 	claims := make(map[common.Address][]claimWeeklyFee)
 
-	for run {
-		to := int64(from) + pas
+	distributorContract, err := feeDistributor.NewFeeDistributor(distributor.Address, client)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for run := true; run; {
+		to := int64(from) + maxBlockRange
 		if to > int64(currentBlock) {
 			to = int64(currentBlock)
 			run = false
 		}
+
 		query := ethereum.FilterQuery{
 			FromBlock: big.NewInt(int64(from) + 1),
 			ToBlock:   big.NewInt(to),
@@ -109,18 +114,13 @@ func fetchClaimWeeklyFees(client *ethclient.Client, currentBlock uint64, config 
 
 		logs, err := client.FilterLogs(context.Background(), query)
 		if err != nil {
-			return claims
-		}
-
-		distributorContract, err := feeDistributor.NewFeeDistributor(distributor.Address, client)
-		if err != nil {
-			log.Fatal(err)
+			fmt.Println("Error in fetchClaimWeeklyFees logs:", err)
+			break
 		}
 
 		fmt.Println("Found", len(logs), "events from block", from, "to block", to)
 
 		for _, vLog := range logs {
-
 			block, err := client.BlockByNumber(context.Background(), big.NewInt(int64(vLog.BlockNumber)))
 			if err != nil {
 				fmt.Println(err)
@@ -133,11 +133,6 @@ func fetchClaimWeeklyFees(client *ethclient.Client, currentBlock uint64, config 
 				continue
 			}
 
-			_, exists := claims[event.Recipient]
-			if !exists {
-				claims[event.Recipient] = make([]claimWeeklyFee, 0)
-			}
-
 			claims[event.Recipient] = append(claims[event.Recipient], claimWeeklyFee{
 				TxHash:         vLog.TxHash,
 				BlockTimestamp: block.Time(),
@@ -146,7 +141,7 @@ func fetchClaimWeeklyFees(client *ethclient.Client, currentBlock uint64, config 
 			})
 		}
 
-		from += uint64(pas)
+		from += maxBlockRange + 1
 	}
 
 	return claims

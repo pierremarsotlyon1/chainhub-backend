@@ -359,43 +359,46 @@ func internalCollectControllerData(client *ethclient.Client, controller interfac
 
 	return crvUsdData, nil
 }
-
 func getFeesCollected(client *ethclient.Client, controller interfaces.CrvUsdController, from int64, toBlock int64) float64 {
-
 	if toBlock < from {
-		tmp := toBlock
-		toBlock = from
-		from = tmp
+		from, toBlock = toBlock, from
 	}
 
-	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(from),
-		ToBlock:   big.NewInt(toBlock),
-		Addresses: []common.Address{controller.Address},
-		Topics:    [][]common.Hash{{common.HexToHash("0x5393ab6ef9bb40d91d1b04bbbeb707fbf3d1eb73f46744e2d179e4996026283f")}},
-	}
+	var feesCollected float64
 
-	feesCollected := 0.0
+	err := utils.ForEachBlockRange(uint64(from), uint64(toBlock), 499, func(start uint64, end uint64) error {
+		query := ethereum.FilterQuery{
+			FromBlock: big.NewInt(int64(start)),
+			ToBlock:   big.NewInt(int64(end)),
+			Addresses: []common.Address{controller.Address},
+			Topics:    [][]common.Hash{{common.HexToHash("0x5393ab6ef9bb40d91d1b04bbbeb707fbf3d1eb73f46744e2d179e4996026283f")}},
+		}
 
-	logs, err := client.FilterLogs(context.Background(), query)
+		logs, err := client.FilterLogs(context.Background(), query)
+		if err != nil {
+			return fmt.Errorf("getFeesCollected logs error: %w", err)
+		}
+
+		for _, vLog := range logs {
+			controllerContract, err := crvUsdController.NewCrvUsdController(vLog.Address, client)
+			if err != nil {
+				fmt.Println("controller init error:", err)
+				continue
+			}
+
+			event, err := controllerContract.ParseCollectFees(vLog)
+			if err != nil {
+				fmt.Println("parse CollectFees error:", err)
+				continue
+			}
+
+			feesCollected += utils.Quo(event.Amount, 18)
+		}
+		return nil
+	})
+
 	if err != nil {
-		return feesCollected
-	}
-
-	for _, vLog := range logs {
-		controllerContract, err := crvUsdController.NewCrvUsdController(vLog.Address, client)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-
-		event, err := controllerContract.ParseCollectFees(vLog)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-
-		feesCollected += utils.Quo(event.Amount, 18)
+		fmt.Println("getFeesCollected error:", err)
 	}
 
 	return feesCollected

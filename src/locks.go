@@ -54,24 +54,12 @@ func FetchLocks(client *ethclient.Client, currentBlock uint64) {
 }
 
 func fetchVeCRVLocks(client *ethclient.Client, currentBlock uint64, config interfaces.Config) []interfaces.Lock {
-
 	from := config.LastBlock
 	if from == 0 {
 		from = 10647811
 	}
 
-	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(int64(from) + 1),
-		ToBlock:   big.NewInt(int64(currentBlock)),
-		Addresses: []common.Address{utils.CURVE_ESCROW_ADDRESS},
-		Topics:    [][]common.Hash{{common.HexToHash("0x4566dfc29f6f11d13a418c26a02bef7c28bae749d4de47e4e6a7cddea6730d59")}},
-	}
-
-	logs, err := client.FilterLogs(context.Background(), query)
-	if err != nil {
-		panic(err)
-	}
-
+	const maxBlockRange = 499
 	locks := make([]interfaces.Lock, 0)
 
 	abi, err := escrow.EscrowMetaData.GetAbi()
@@ -79,32 +67,49 @@ func fetchVeCRVLocks(client *ethclient.Client, currentBlock uint64, config inter
 		panic(err)
 	}
 
-	for _, vLog := range logs {
-		receivedMap := map[string]interface{}{}
-		if err := abi.UnpackIntoMap(receivedMap, "Deposit", vLog.Data); err != nil {
-			fmt.Println(err)
-			continue
+	for start := from + 1; start <= currentBlock; start += maxBlockRange + 1 {
+		end := min(start+maxBlockRange, currentBlock)
+
+		query := ethereum.FilterQuery{
+			FromBlock: big.NewInt(int64(start)),
+			ToBlock:   big.NewInt(int64(end)),
+			Addresses: []common.Address{utils.CURVE_ESCROW_ADDRESS},
+			Topics:    [][]common.Hash{{common.HexToHash("0x4566dfc29f6f11d13a418c26a02bef7c28bae749d4de47e4e6a7cddea6730d59")}},
 		}
 
-		value := receivedMap["value"].(*big.Int)
-		if value.Cmp(big.NewInt(0)) != 1 {
-			continue
-		}
-
-		block, err := client.BlockByNumber(context.Background(), big.NewInt(int64(vLog.BlockNumber)))
+		logs, err := client.FilterLogs(context.Background(), query)
 		if err != nil {
-			fmt.Println(err)
+			fmt.Printf("error querying blocks %d-%d: %v\n", start, end, err)
 			continue
 		}
 
-		timestamp := block.Time()
+		for _, vLog := range logs {
+			receivedMap := map[string]interface{}{}
+			if err := abi.UnpackIntoMap(receivedMap, "Deposit", vLog.Data); err != nil {
+				fmt.Println(err)
+				continue
+			}
 
-		locks = append(locks, interfaces.Lock{
-			Tx:        vLog.TxHash,
-			Timestamp: timestamp,
-			Value:     value,
-			User:      common.HexToAddress(vLog.Topics[1].Hex()),
-		})
+			value := receivedMap["value"].(*big.Int)
+			if value.Cmp(big.NewInt(0)) != 1 {
+				continue
+			}
+
+			block, err := client.BlockByNumber(context.Background(), big.NewInt(int64(vLog.BlockNumber)))
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+
+			timestamp := block.Time()
+
+			locks = append(locks, interfaces.Lock{
+				Tx:        vLog.TxHash,
+				Timestamp: timestamp,
+				Value:     value,
+				User:      common.HexToAddress(vLog.Topics[1].Hex()),
+			})
+		}
 	}
 
 	return locks

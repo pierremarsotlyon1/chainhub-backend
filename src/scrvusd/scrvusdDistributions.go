@@ -39,62 +39,66 @@ func ScrvusdDistributions(client *ethclient.Client, currentBlock uint64) {
 	utils.WriteConfig(config, currentBlock, scrvusd_distributions_config)
 	writeScrvUSDDistributions(distributions)
 }
-
 func fetchDistributions(client *ethclient.Client, config interfaces.Config, currentBlock uint64) []interfaces.ScrvusdDistribution {
 	from := config.LastBlock
 	if from == 0 {
 		from = 21087889
 	}
 
-	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(int64(from) + 1),
-		ToBlock:   big.NewInt(int64(currentBlock)),
-		Addresses: []common.Address{utils.SCRV_USD},
-		Topics:    [][]common.Hash{{common.HexToHash("0x7f2ad1d3ba35276f35ef140f83e3e0f17b23064fd710113d3f7a5ab30d267811")}},
-	}
-
-	logs, err := client.FilterLogs(context.Background(), query)
 	distributions := make([]interfaces.ScrvusdDistribution, 0)
-	if err != nil {
-		return distributions
-	}
 
 	scrvUSDContract, err := scrvUSD.NewScrvUSD(utils.SCRV_USD, client)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	for _, vLog := range logs {
-
-		block, err := client.BlockByNumber(context.Background(), big.NewInt(int64(vLog.BlockNumber)))
-		if err != nil {
-			fmt.Println(err)
-			continue
+	err = utils.ForEachBlockRange(from, currentBlock, 499, func(start uint64, end uint64) error {
+		query := ethereum.FilterQuery{
+			FromBlock: big.NewInt(int64(start)),
+			ToBlock:   big.NewInt(int64(end)),
+			Addresses: []common.Address{utils.SCRV_USD},
+			Topics:    [][]common.Hash{{common.HexToHash("0x7f2ad1d3ba35276f35ef140f83e3e0f17b23064fd710113d3f7a5ab30d267811")}},
 		}
 
-		event, err := scrvUSDContract.ParseStrategyReported(vLog)
+		logs, err := client.FilterLogs(context.Background(), query)
 		if err != nil {
-			fmt.Println(err)
-			continue
+			return fmt.Errorf("fetchDistributions logs error: %w", err)
 		}
 
-		gain := utils.Quo(event.Gain, 18)
+		for _, vLog := range logs {
+			block, err := client.BlockByNumber(context.Background(), big.NewInt(int64(vLog.BlockNumber)))
+			if err != nil {
+				fmt.Println("BlockByNumber error:", err)
+				continue
+			}
 
-		crvUSDPrice := utils.GetHistoricalPriceTokenPrice(utils.CRVUSD_ADDRESS, "ethereum", block.Time())
-		gainUSD := gain * crvUSDPrice
+			event, err := scrvUSDContract.ParseStrategyReported(vLog)
+			if err != nil {
+				fmt.Println("ParseStrategyReported error:", err)
+				continue
+			}
 
-		distributions = append(distributions, interfaces.ScrvusdDistribution{
-			TxHash:         vLog.TxHash,
-			BlockTimestamp: block.Time(),
-			Gain:           gain,
-			GainUSD:        gainUSD,
-		})
+			gain := utils.Quo(event.Gain, 18)
+			crvUSDPrice := utils.GetHistoricalPriceTokenPrice(utils.CRVUSD_ADDRESS, "ethereum", block.Time())
+			gainUSD := gain * crvUSDPrice
 
+			distributions = append(distributions, interfaces.ScrvusdDistribution{
+				TxHash:         vLog.TxHash,
+				BlockTimestamp: block.Time(),
+				Gain:           gain,
+				GainUSD:        gainUSD,
+			})
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		fmt.Println("fetchDistributions pagination error:", err)
 	}
 
 	return distributions
 }
-
 func readScrvUSDDistributions() []interfaces.ScrvusdDistribution {
 	distributions := make([]interfaces.ScrvusdDistribution, 0)
 	b, err := utils.ReadBucketFile(bucket_scrvusd_distributions)

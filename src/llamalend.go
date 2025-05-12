@@ -395,38 +395,44 @@ func fetchLlamalend(opts *bind.CallOpts, factory interfaces.LlamalendConfig, cli
 
 	return markets
 }
-
 func fetchHardLiquidation(client *ethclient.Client, now uint64, controllerAddress common.Address, blockFrom int64, blockTo int64) []interfaces.LlamalendLiquidate {
-	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(blockFrom),
-		ToBlock:   big.NewInt(blockTo),
-		Addresses: []common.Address{controllerAddress},
-		Topics:    [][]common.Hash{{common.HexToHash("0x642dd4d37ddd32036b9797cec464c0045dd2118c549066ae6b0f88e32240c2d0")}},
-	}
-
-	logs, err := client.FilterLogs(context.Background(), query)
-	if err != nil {
-		panic(err)
-	}
-
 	llamalendLiquidates := make([]interfaces.LlamalendLiquidate, 0)
 
-	for _, vLog := range logs {
-		controllerContract, err := llamalendController.NewLlamalendController(vLog.Address, client)
-		if err != nil {
-			panic(err)
+	err := utils.ForEachBlockRange(uint64(blockFrom), uint64(blockTo), 499, func(start uint64, end uint64) error {
+		query := ethereum.FilterQuery{
+			FromBlock: big.NewInt(int64(start)),
+			ToBlock:   big.NewInt(int64(end)),
+			Addresses: []common.Address{controllerAddress},
+			Topics:    [][]common.Hash{{common.HexToHash("0x642dd4d37ddd32036b9797cec464c0045dd2118c549066ae6b0f88e32240c2d0")}},
 		}
 
-		event, err := controllerContract.ParseLiquidate(vLog)
+		logs, err := client.FilterLogs(context.Background(), query)
 		if err != nil {
-			fmt.Println(err)
-			continue
+			return fmt.Errorf("fetchHardLiquidation logs error: %w", err)
 		}
 
-		llamalendLiquidates = append(llamalendLiquidates, interfaces.LlamalendLiquidate{
-			Timestamp: now,
-			User:      event.User,
-		})
+		controllerContract, err := llamalendController.NewLlamalendController(controllerAddress, client)
+		if err != nil {
+			return fmt.Errorf("controller contract error: %w", err)
+		}
+
+		for _, vLog := range logs {
+			event, err := controllerContract.ParseLiquidate(vLog)
+			if err != nil {
+				fmt.Println("ParseLiquidate error:", err)
+				continue
+			}
+
+			llamalendLiquidates = append(llamalendLiquidates, interfaces.LlamalendLiquidate{
+				Timestamp: now,
+				User:      event.User,
+			})
+		}
+		return nil
+	})
+
+	if err != nil {
+		fmt.Println("fetchHardLiquidation error:", err)
 	}
 
 	return llamalendLiquidates

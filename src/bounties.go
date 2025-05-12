@@ -252,156 +252,191 @@ func computeBountiesStats(allClaimed []interfaces.BountyClaimed) {
 
 	writeStats(stats)
 }
-
 func fetchVotium(client *ethclient.Client, curvePools []interfaces.CurvePool, currentBlock uint64, config interfaces.Config) []interfaces.BountyClaimed {
-
-	// veCRV
-	from := config.LastBlock
-	if from == 0 {
-		from = 14730003
-	}
-	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(int64(from) + 1),
-		ToBlock:   big.NewInt(int64(currentBlock)),
-		Addresses: VOTIUM_VE_CRV_ADDRESSES,
-		Topics:    [][]common.Hash{{common.HexToHash("0x51c8cd367a987b8c2f652c101ea7076ec8e4dfd33c4c77bb80e018e7143b6512")}},
+	fromVeCRV := config.LastBlock
+	if fromVeCRV == 0 {
+		fromVeCRV = 14730003
 	}
 
-	logs, err := client.FilterLogs(context.Background(), query)
-	if err != nil {
-		panic(err)
-	}
-
+	const maxBlockRange = 499
 	bountiesClaimed := make([]interfaces.BountyClaimed, 0)
 
-	for _, vLog := range logs {
-		votiumContract, err := votiumVECrv.NewVotiumVECrv(vLog.Address, client)
-		if err != nil {
-			panic(err)
+	// veCRV
+	for start := fromVeCRV + 1; start <= currentBlock; start += maxBlockRange + 1 {
+		end := min(start+maxBlockRange, currentBlock)
+
+		query := ethereum.FilterQuery{
+			FromBlock: big.NewInt(int64(start)),
+			ToBlock:   big.NewInt(int64(end)),
+			Addresses: VOTIUM_VE_CRV_ADDRESSES,
+			Topics:    [][]common.Hash{{common.HexToHash("0x51c8cd367a987b8c2f652c101ea7076ec8e4dfd33c4c77bb80e018e7143b6512")}},
 		}
 
-		event, err := votiumContract.ParseNewReward(vLog)
+		logs, err := client.FilterLogs(context.Background(), query)
 		if err != nil {
 			fmt.Println(err)
 			continue
 		}
 
-		bountiesClaimed = addVotiumClaim(client, bountiesClaimed, vLog.Address, event.Token, vLog.BlockNumber, event.Amount, vLog.TxHash, "")
+		for _, vLog := range logs {
+			votiumContract, err := votiumVECrv.NewVotiumVECrv(vLog.Address, client)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+
+			event, err := votiumContract.ParseNewReward(vLog)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+
+			bountiesClaimed = addVotiumClaim(client, bountiesClaimed, vLog.Address, event.Token, vLog.BlockNumber, event.Amount, vLog.TxHash, "")
+		}
 	}
 
 	// vlCVX V2
-	from = config.LastBlock
-	if from == 0 {
-		from = 13320168
-	}
-	query = ethereum.FilterQuery{
-		FromBlock: big.NewInt(int64(from) + 1),
-		ToBlock:   big.NewInt(int64(currentBlock)),
-		Addresses: VOTIUM_MERKLE_V2,
-		Topics:    [][]common.Hash{{common.HexToHash("0x4766921f5c59646d22d7d266a29164c8e9623684d8dfdbd931731dfdca025238")}},
+	fromVLCVX := config.LastBlock
+	if fromVLCVX == 0 {
+		fromVLCVX = 13320168
 	}
 
-	logs, err = client.FilterLogs(context.Background(), query)
-	if err != nil {
-		panic(err)
-	}
-
-	for _, vLog := range logs {
-		votiumContract, err := votiumMerkle.NewVotiumMerkle(vLog.Address, client)
-		if err != nil {
-			panic(err)
+	for start := fromVLCVX + 1; start <= currentBlock; start += maxBlockRange + 1 {
+		end := start + maxBlockRange
+		if end > currentBlock {
+			end = currentBlock
 		}
 
-		event, err := votiumContract.ParseClaimed(vLog)
-		if err != nil {
-			panic(err)
+		query := ethereum.FilterQuery{
+			FromBlock: big.NewInt(int64(start)),
+			ToBlock:   big.NewInt(int64(end)),
+			Addresses: VOTIUM_MERKLE_V2,
+			Topics:    [][]common.Hash{{common.HexToHash("0x4766921f5c59646d22d7d266a29164c8e9623684d8dfdbd931731dfdca025238")}},
 		}
 
-		bountiesClaimed = addClaim(client, curvePools, bountiesClaimed, vLog.Address, event.Token, event.Token, vLog.BlockNumber, 0, event.Amount, vLog.TxHash, "ethereum", "vlCVX")
+		logs, err := client.FilterLogs(context.Background(), query)
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+
+		for _, vLog := range logs {
+			votiumContract, err := votiumMerkle.NewVotiumMerkle(vLog.Address, client)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+
+			event, err := votiumContract.ParseClaimed(vLog)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+
+			bountiesClaimed = addClaim(client, curvePools, bountiesClaimed, vLog.Address, event.Token, event.Token, vLog.BlockNumber, 0, event.Amount, vLog.TxHash, "ethereum", "vlCVX")
+		}
 	}
 
 	return bountiesClaimed
 }
-
 func fetchVotemarketV1(client *ethclient.Client, curvePools []interfaces.CurvePool, currentBlock uint64, config interfaces.Config) []interfaces.BountyClaimed {
-
 	from := config.LastBlock
 	if from == 0 {
 		from = 16376671
 	}
-	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(int64(from) + 1),
-		ToBlock:   big.NewInt(int64(currentBlock)),
-		Addresses: VOTEMARKET_ADDRESSES_V1,
-		Topics:    [][]common.Hash{{common.HexToHash("0x6f9c9826be5976f3f82a3490c52a83328ce2ec7be9e62dcb39c26da5148d7c76")}},
-	}
 
-	logs, err := client.FilterLogs(context.Background(), query)
-	if err != nil {
-		panic(err)
-	}
-
+	const maxBlockRange = 499
 	bountiesClaimed := make([]interfaces.BountyClaimed, 0)
 
-	for _, vLog := range logs {
-		votemarketContract, err := votemarketV1.NewVotemarketV1(vLog.Address, client)
-		if err != nil {
-			panic(err)
+	for start := from + 1; start <= currentBlock; start += maxBlockRange + 1 {
+		end := start + maxBlockRange
+		if end > currentBlock {
+			end = currentBlock
 		}
 
-		event, err := votemarketContract.ParseClaimed(vLog)
+		query := ethereum.FilterQuery{
+			FromBlock: big.NewInt(int64(start)),
+			ToBlock:   big.NewInt(int64(end)),
+			Addresses: VOTEMARKET_ADDRESSES_V1,
+			Topics:    [][]common.Hash{{common.HexToHash("0x6f9c9826be5976f3f82a3490c52a83328ce2ec7be9e62dcb39c26da5148d7c76")}},
+		}
+
+		logs, err := client.FilterLogs(context.Background(), query)
 		if err != nil {
-			fmt.Println(err)
+			fmt.Println("fetchVotemarketV1 logs error:", err)
 			continue
 		}
 
-		bountiesClaimed = addClaim(client, curvePools, bountiesClaimed, vLog.Address, event.RewardToken, event.RewardToken, vLog.BlockNumber, 0, event.Amount, vLog.TxHash, "ethereum", "")
+		for _, vLog := range logs {
+			votemarketContract, err := votemarketV1.NewVotemarketV1(vLog.Address, client)
+			if err != nil {
+				fmt.Println("fetchVotemarketV1 contract init error:", err)
+				continue
+			}
+
+			event, err := votemarketContract.ParseClaimed(vLog)
+			if err != nil {
+				fmt.Println("fetchVotemarketV1 parse error:", err)
+				continue
+			}
+
+			bountiesClaimed = addClaim(client, curvePools, bountiesClaimed, vLog.Address, event.RewardToken, event.RewardToken, vLog.BlockNumber, 0, event.Amount, vLog.TxHash, "ethereum", "")
+		}
 	}
 
 	return bountiesClaimed
 }
-
 func fetchVotemarketV2(client *ethclient.Client, curvePools []interfaces.CurvePool, currentBlock uint64, config interfaces.Config) []interfaces.BountyClaimed {
-
 	from := config.LastBlock
 	if from == 0 {
 		from = 16376671
 	}
-	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(int64(from) + 1),
-		ToBlock:   big.NewInt(int64(currentBlock)),
-		Addresses: VOTEMARKET_ADDRESSES_V2,
-		Topics:    [][]common.Hash{{common.HexToHash("0x6f9c9826be5976f3f82a3490c52a83328ce2ec7be9e62dcb39c26da5148d7c76")}},
-	}
 
-	logs, err := client.FilterLogs(context.Background(), query)
-	if err != nil {
-		panic(err)
-	}
-
+	const maxBlockRange = 499
 	bountiesClaimed := make([]interfaces.BountyClaimed, 0)
 
-	for _, vLog := range logs {
-		votemarketContract, err := votemarketV2.NewVotemarketV2(vLog.Address, client)
-		if err != nil {
-			panic(err)
+	for start := from + 1; start <= currentBlock; start += maxBlockRange + 1 {
+		end := start + maxBlockRange
+		if end > currentBlock {
+			end = currentBlock
 		}
 
-		event, err := votemarketContract.ParseClaimed(vLog)
+		query := ethereum.FilterQuery{
+			FromBlock: big.NewInt(int64(start)),
+			ToBlock:   big.NewInt(int64(end)),
+			Addresses: VOTEMARKET_ADDRESSES_V2,
+			Topics:    [][]common.Hash{{common.HexToHash("0x6f9c9826be5976f3f82a3490c52a83328ce2ec7be9e62dcb39c26da5148d7c76")}},
+		}
+
+		logs, err := client.FilterLogs(context.Background(), query)
 		if err != nil {
-			fmt.Println(err)
+			fmt.Println("fetchVotemarketV2 logs error:", err)
 			continue
 		}
 
-		bountiesClaimed = addClaim(client, curvePools, bountiesClaimed, vLog.Address, event.RewardToken, event.RewardToken, vLog.BlockNumber, 0, event.Amount, vLog.TxHash, "ethereum", "")
+		for _, vLog := range logs {
+			votemarketContract, err := votemarketV2.NewVotemarketV2(vLog.Address, client)
+			if err != nil {
+				fmt.Println("fetchVotemarketV2 contract init error:", err)
+				continue
+			}
+
+			event, err := votemarketContract.ParseClaimed(vLog)
+			if err != nil {
+				fmt.Println("fetchVotemarketV2 parse error:", err)
+				continue
+			}
+
+			bountiesClaimed = addClaim(client, curvePools, bountiesClaimed, vLog.Address, event.RewardToken, event.RewardToken, vLog.BlockNumber, 0, event.Amount, vLog.TxHash, "ethereum", "")
+		}
 	}
 
 	return bountiesClaimed
 }
 
 func fetchVotemarketVmV2V1(curvePools []interfaces.CurvePool, drpcKey string) []interfaces.BountyClaimed {
-
 	bountiesClaimed := make([]interfaces.BountyClaimed, 0)
+	const maxBlockRange = 499
 
 	for _, vmv2Config := range VOTEMARKET_VMV2_ADDRESSES_V1 {
 		log.Println("Fetching bounties vm v2 on chain ", vmv2Config.ChainId)
@@ -420,13 +455,8 @@ func fetchVotemarketVmV2V1(curvePools []interfaces.CurvePool, drpcKey string) []
 
 		for _, market := range vmv2Config.Markets {
 			for _, marketAddress := range market.Addresses {
-				// Fetch last config
 				configFilePath := "./data/configs/bounties-config-vm-v2-" + strconv.Itoa(vmv2Config.ChainId) + "-" + marketAddress.Hex() + ".json"
-
-				// Read the current config
 				config := utils.ReadConfig(configFilePath)
-
-				// Write directly the config with the current block
 				utils.WriteConfig(config, currentBlockNumber, configFilePath)
 
 				from := config.LastBlock
@@ -435,140 +465,146 @@ func fetchVotemarketVmV2V1(curvePools []interfaces.CurvePool, drpcKey string) []
 				}
 
 				log.Println(from, currentBlockNumber)
-				query := ethereum.FilterQuery{
-					FromBlock: big.NewInt(int64(from) + 1),
-					ToBlock:   big.NewInt(int64(currentBlockNumber)),
-					Addresses: []common.Address{marketAddress},
-					Topics:    [][]common.Hash{{common.HexToHash("0x318e0a24a7fc05b12e358902d9d58475434a01768f87a4319fb35dc5b533e986")}},
-				}
 
-				logs, err := client.FilterLogs(context.Background(), query)
-				if err != nil {
-					log.Println("FilterLogs", err)
-					continue
-				}
+				for start := from + 1; start <= currentBlockNumber; start += maxBlockRange + 1 {
+					end := start + maxBlockRange
+					if end > currentBlockNumber {
+						end = currentBlockNumber
+					}
 
-				votemarketContract, err := vmV2.NewVmV2(marketAddress, client)
-				if err != nil {
-					log.Println(err)
-					continue
-				}
+					query := ethereum.FilterQuery{
+						FromBlock: big.NewInt(int64(start)),
+						ToBlock:   big.NewInt(int64(end)),
+						Addresses: []common.Address{marketAddress},
+						Topics:    [][]common.Hash{{common.HexToHash("0x318e0a24a7fc05b12e358902d9d58475434a01768f87a4319fb35dc5b533e986")}},
+					}
 
-				remoteManagerAddress, err := votemarketContract.Remote(nil)
-				if err != nil {
-					log.Println(err)
-					continue
-				}
-
-				remoteContract, err := vmRemoteManager.NewVmRemoteManager(remoteManagerAddress, client)
-				if err != nil {
-					log.Println(err)
-					continue
-				}
-
-				tokenFactoryAddress, err := remoteContract.TOKENFACTORY(nil)
-				if err != nil {
-					log.Println(err)
-					continue
-				}
-
-				tokenFactoryContract, err := vmTokenFactory.NewVmTokenFactory(tokenFactoryAddress, client)
-				if err != nil {
-					log.Println(err)
-					continue
-				}
-
-				for _, vLog := range logs {
-
-					event, err := votemarketContract.ParseClaim(vLog)
+					logs, err := client.FilterLogs(context.Background(), query)
 					if err != nil {
-						log.Println("ParseClaim", err)
+						log.Println("FilterLogs", err)
 						continue
 					}
 
-					// Fetch the reward token
-					campaign, err := votemarketContract.CampaignById(nil, event.CampaignId)
+					votemarketContract, err := vmV2.NewVmV2(marketAddress, client)
 					if err != nil {
-						log.Println("CampaignById", err)
+						log.Println(err)
 						continue
 					}
 
-					// Check if it's a wrapper and get the native one
-					nativeToken, err := tokenFactoryContract.NativeTokens(nil, campaign.RewardToken)
+					remoteManagerAddress, err := votemarketContract.Remote(nil)
 					if err != nil {
-						log.Println("NativeTokens", err)
+						log.Println(err)
 						continue
 					}
 
-					var realTokenReward common.Address
-					tokenRewardChain := ""
-
-					if utils.IsNullAddress(nativeToken) {
-						// reward token is on the L2
-						tokenRewardChain = vmv2Config.DefilammaChainName
-						realTokenReward = campaign.RewardToken
-					} else {
-						// native token not null, real reward token one is on mainnet
-						tokenRewardChain = "ethereum"
-						realTokenReward = nativeToken
-					}
-
-					if len(tokenRewardChain) == 0 {
+					remoteContract, err := vmRemoteManager.NewVmRemoteManager(remoteManagerAddress, client)
+					if err != nil {
+						log.Println(err)
 						continue
 					}
 
-					bountiesClaimed = addClaim(client, curvePools, bountiesClaimed, vLog.Address, realTokenReward, campaign.RewardToken, vLog.BlockNumber, event.Epoch.Uint64(), event.Amount, vLog.TxHash, tokenRewardChain, "")
+					tokenFactoryAddress, err := remoteContract.TOKENFACTORY(nil)
+					if err != nil {
+						log.Println(err)
+						continue
+					}
+
+					tokenFactoryContract, err := vmTokenFactory.NewVmTokenFactory(tokenFactoryAddress, client)
+					if err != nil {
+						log.Println(err)
+						continue
+					}
+
+					for _, vLog := range logs {
+						event, err := votemarketContract.ParseClaim(vLog)
+						if err != nil {
+							log.Println("ParseClaim", err)
+							continue
+						}
+
+						campaign, err := votemarketContract.CampaignById(nil, event.CampaignId)
+						if err != nil {
+							log.Println("CampaignById", err)
+							continue
+						}
+
+						nativeToken, err := tokenFactoryContract.NativeTokens(nil, campaign.RewardToken)
+						if err != nil {
+							log.Println("NativeTokens", err)
+							continue
+						}
+
+						var realTokenReward common.Address
+						tokenRewardChain := ""
+
+						if utils.IsNullAddress(nativeToken) {
+							tokenRewardChain = vmv2Config.DefilammaChainName
+							realTokenReward = campaign.RewardToken
+						} else {
+							tokenRewardChain = "ethereum"
+							realTokenReward = nativeToken
+						}
+
+						if len(tokenRewardChain) == 0 {
+							continue
+						}
+
+						bountiesClaimed = addClaim(client, curvePools, bountiesClaimed, vLog.Address, realTokenReward, campaign.RewardToken, vLog.BlockNumber, event.Epoch.Uint64(), event.Amount, vLog.TxHash, tokenRewardChain, "")
+					}
 				}
 			}
 		}
 	}
 
 	log.Println("Fetched", len(bountiesClaimed), "claimed on vm v2")
-
 	return bountiesClaimed
 }
 
 func fetchQuest(client *ethclient.Client, curvePools []interfaces.CurvePool, currentBlock uint64, config interfaces.Config) []interfaces.BountyClaimed {
-
 	from := config.LastBlock
 	if from == 0 {
 		from = 14784920
 	}
-	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(int64(from) + 1),
-		ToBlock:   big.NewInt(int64(currentBlock)),
-		Addresses: QUEST_ADDRESSES,
-		Topics:    [][]common.Hash{{common.HexToHash("0x9a5376f7dcf8631c2b6249c9bec3d715cb97bdd4c82d92e55d147f6b4eea4197")}},
-	}
 
-	logs, err := client.FilterLogs(context.Background(), query)
-	if err != nil {
-		panic(err)
-	}
-
+	const maxBlockRange = 499
 	bountiesClaimed := make([]interfaces.BountyClaimed, 0)
 
-	for _, vLog := range logs {
-		questContract, err := questDistributor.NewQuestDistributor(vLog.Address, client)
-		if err != nil {
-			panic(err)
+	for start := from + 1; start <= currentBlock; start += maxBlockRange + 1 {
+		end := min(start+maxBlockRange, currentBlock)
+
+		query := ethereum.FilterQuery{
+			FromBlock: big.NewInt(int64(start)),
+			ToBlock:   big.NewInt(int64(end)),
+			Addresses: QUEST_ADDRESSES,
+			Topics:    [][]common.Hash{{common.HexToHash("0x9a5376f7dcf8631c2b6249c9bec3d715cb97bdd4c82d92e55d147f6b4eea4197")}},
 		}
 
-		event, err := questContract.ParseClaimed(vLog)
+		logs, err := client.FilterLogs(context.Background(), query)
 		if err != nil {
-			fmt.Println(err)
+			fmt.Println("fetchQuest logs error:", err)
 			continue
 		}
 
-		bountiesClaimed = addClaim(client, curvePools, bountiesClaimed, vLog.Address, event.RewardToken, event.RewardToken, vLog.BlockNumber, 0, event.Amount, vLog.TxHash, "ethereum", "")
+		for _, vLog := range logs {
+			questContract, err := questDistributor.NewQuestDistributor(vLog.Address, client)
+			if err != nil {
+				fmt.Println("fetchQuest contract init error:", err)
+				continue
+			}
+
+			event, err := questContract.ParseClaimed(vLog)
+			if err != nil {
+				fmt.Println("fetchQuest parse error:", err)
+				continue
+			}
+
+			bountiesClaimed = addClaim(client, curvePools, bountiesClaimed, vLog.Address, event.RewardToken, event.RewardToken, vLog.BlockNumber, 0, event.Amount, vLog.TxHash, "ethereum", "")
+		}
 	}
 
 	return bountiesClaimed
-
 }
-
 func fetchYBribe(client *ethclient.Client, curvePools []interfaces.CurvePool, currentBlock uint64, config interfaces.Config, alchemyRpcUrl string) []interfaces.BountyClaimed {
-
 	client2, err := ethclient.Dial(alchemyRpcUrl)
 	if err != nil {
 		panic(err)
@@ -578,66 +614,74 @@ func fetchYBribe(client *ethclient.Client, curvePools []interfaces.CurvePool, cu
 	if from == 0 {
 		from = 15878261
 	}
-	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(int64(from) + 1),
-		ToBlock:   big.NewInt(int64(currentBlock)),
-		Addresses: YBRIBE_ADDRESSES,
-		Topics:    [][]common.Hash{{common.HexToHash("0x2422cac5e23c46c890fdcf42d0c64757409df6832174df639337558f09d99c68")}},
-	}
 
-	logs, err := client.FilterLogs(context.Background(), query)
-	if err != nil {
-		panic(err)
-	}
-
+	const maxBlockRange = 499
 	bountiesClaimed := make([]interfaces.BountyClaimed, 0)
 
-	for _, vLog := range logs {
-		ybribeContract, err := yBribeV3.NewYBribeV3(vLog.Address, client)
+	for start := from + 1; start <= currentBlock; start += maxBlockRange + 1 {
+		end := min(start+maxBlockRange, currentBlock)
+
+		query := ethereum.FilterQuery{
+			FromBlock: big.NewInt(int64(start)),
+			ToBlock:   big.NewInt(int64(end)),
+			Addresses: YBRIBE_ADDRESSES,
+			Topics:    [][]common.Hash{{common.HexToHash("0x2422cac5e23c46c890fdcf42d0c64757409df6832174df639337558f09d99c68")}},
+		}
+
+		logs, err := client.FilterLogs(context.Background(), query)
 		if err != nil {
-			fmt.Println(err)
+			fmt.Println("fetchYBribe logs error:", err)
 			continue
 		}
 
-		event, err := ybribeContract.ParseRewardClaimed(vLog)
-		if err != nil {
-			panic(err)
-		}
-
-		receipt, err := client2.TransactionReceipt(context.Background(), vLog.TxHash)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-
-		found := false
-		for _, receiptLog := range receipt.Logs {
-			if strings.EqualFold(receiptLog.Topics[0].Hex(), common.HexToHash("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef").Hex()) {
-				t, err := erc20.NewErc20(receiptLog.Address, client)
-				if err != nil {
-					continue
-				}
-
-				transfert, err := t.ParseTransfer(*receiptLog)
-				if err != nil {
-					continue
-				}
-
-				if transfert.Value.Cmp(event.Amount) != 0 {
-					continue
-				}
-
-				event.RewardToken = receiptLog.Address
-				found = true
-				break
+		for _, vLog := range logs {
+			ybribeContract, err := yBribeV3.NewYBribeV3(vLog.Address, client)
+			if err != nil {
+				fmt.Println("yBribe contract init error:", err)
+				continue
 			}
-		}
 
-		if !found {
-			continue
-		}
+			event, err := ybribeContract.ParseRewardClaimed(vLog)
+			if err != nil {
+				fmt.Println("parse RewardClaimed error:", err)
+				continue
+			}
 
-		bountiesClaimed = addClaim(client, curvePools, bountiesClaimed, vLog.Address, event.RewardToken, event.RewardToken, vLog.BlockNumber, 0, event.Amount, vLog.TxHash, "ethereum", "")
+			receipt, err := client2.TransactionReceipt(context.Background(), vLog.TxHash)
+			if err != nil {
+				fmt.Println("receipt fetch error:", err)
+				continue
+			}
+
+			found := false
+			for _, receiptLog := range receipt.Logs {
+				if strings.EqualFold(receiptLog.Topics[0].Hex(), "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef") {
+					t, err := erc20.NewErc20(receiptLog.Address, client)
+					if err != nil {
+						continue
+					}
+
+					transfert, err := t.ParseTransfer(*receiptLog)
+					if err != nil {
+						continue
+					}
+
+					if transfert.Value.Cmp(event.Amount) != 0 {
+						continue
+					}
+
+					event.RewardToken = receiptLog.Address
+					found = true
+					break
+				}
+			}
+
+			if !found {
+				continue
+			}
+
+			bountiesClaimed = addClaim(client, curvePools, bountiesClaimed, vLog.Address, event.RewardToken, event.RewardToken, vLog.BlockNumber, 0, event.Amount, vLog.TxHash, "ethereum", "")
+		}
 	}
 
 	return bountiesClaimed

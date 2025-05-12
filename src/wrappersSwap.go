@@ -47,108 +47,111 @@ func WrappersSwap(client *ethclient.Client, currentBlock uint64) {
 	utils.WriteConfig(config, currentBlock, wrappers_config)
 	writeWrappersSwaps(wrappersSwaps)
 }
-
 func fetchTokenExchanges(client *ethclient.Client, config interfaces.Config, currentBlock uint64, wrapper interfaces.Wrapper) []interfaces.PoolTokenExchange {
 	from := config.LastBlock
 	if from == 0 {
 		from = 21528043
 	}
 
+	swaps := make([]interfaces.PoolTokenExchange, 0)
+
 	pools := []common.Address{wrapper.PoolAddress}
 	pools = append(pools, wrapper.OldPoolAddresses...)
-
-	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(int64(from) + 1),
-		ToBlock:   big.NewInt(int64(currentBlock)),
-		Addresses: pools,
-		Topics:    [][]common.Hash{{common.HexToHash("0x8b3e96f2b889fa771c53c981b40daf005f63f637f1869f707052d15a3dd97140")}},
-	}
-
-	logs, err := client.FilterLogs(context.Background(), query)
-	swaps := make([]interfaces.PoolTokenExchange, 0)
-	if err != nil {
-		return swaps
-	}
 
 	poolContract, err := curvePoolWrappers.NewCurvePoolWrappers(wrapper.PoolAddress, client)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	for _, vLog := range logs {
-
-		block, err := client.BlockByNumber(context.Background(), big.NewInt(int64(vLog.BlockNumber)))
-		if err != nil {
-			fmt.Println(err)
-			continue
+	err = utils.ForEachBlockRange(from, currentBlock, 499, func(start uint64, end uint64) error {
+		query := ethereum.FilterQuery{
+			FromBlock: big.NewInt(int64(start)),
+			ToBlock:   big.NewInt(int64(end)),
+			Addresses: pools,
+			Topics:    [][]common.Hash{{common.HexToHash("0x8b3e96f2b889fa771c53c981b40daf005f63f637f1869f707052d15a3dd97140")}},
 		}
 
-		event, err := poolContract.ParseTokenExchange(vLog)
+		logs, err := client.FilterLogs(context.Background(), query)
 		if err != nil {
-			fmt.Println(err)
-			continue
+			return fmt.Errorf("fetchTokenExchanges logs error: %w", err)
 		}
 
-		// Token sold
-		tokenSoldAddress, err := poolContract.Coins(nil, event.SoldId)
-		if err != nil {
-			fmt.Println(err)
-			continue
+		for _, vLog := range logs {
+			block, err := client.BlockByNumber(context.Background(), big.NewInt(int64(vLog.BlockNumber)))
+			if err != nil {
+				fmt.Println("BlockByNumber error:", err)
+				continue
+			}
+
+			event, err := poolContract.ParseTokenExchange(vLog)
+			if err != nil {
+				fmt.Println("ParseTokenExchange error:", err)
+				continue
+			}
+
+			tokenSoldAddress, err := poolContract.Coins(nil, event.SoldId)
+			if err != nil {
+				fmt.Println("Coins (sold) error:", err)
+				continue
+			}
+
+			tokenSoldAmount := utils.Quo(event.TokensSold, 18)
+
+			tokenSoldContract, err := erc20.NewErc20(tokenSoldAddress, client)
+			if err != nil {
+				fmt.Println("ERC20 (sold) error:", err)
+				continue
+			}
+
+			tokenSoldSymbol, err := tokenSoldContract.Symbol(nil)
+			if err != nil {
+				fmt.Println("Symbol (sold) error:", err)
+				continue
+			}
+
+			tokenBoughtAddress, err := poolContract.Coins(nil, event.BoughtId)
+			if err != nil {
+				fmt.Println("Coins (bought) error:", err)
+				continue
+			}
+
+			tokenBoughtAmount := utils.Quo(event.TokensBought, 18)
+
+			tokenBoughtContract, err := erc20.NewErc20(tokenBoughtAddress, client)
+			if err != nil {
+				fmt.Println("ERC20 (bought) error:", err)
+				continue
+			}
+
+			tokenBoughtSymbol, err := tokenBoughtContract.Symbol(nil)
+			if err != nil {
+				fmt.Println("Symbol (bought) error:", err)
+				continue
+			}
+
+			swaps = append(swaps, interfaces.PoolTokenExchange{
+				User:               common.HexToAddress("0x" + vLog.Topics[1].Hex()[26:]),
+				TokenSoldAddress:   tokenSoldAddress,
+				TokenSoldAmount:    tokenSoldAmount,
+				TokenBoughtAddress: tokenBoughtAddress,
+				TokenBoughtAmount:  tokenBoughtAmount,
+				SymbolSold:         tokenSoldSymbol,
+				SymbolBought:       tokenBoughtSymbol,
+				TxHash:             vLog.TxHash,
+				BlockTimestamp:     block.Time(),
+				PoolAddress:        vLog.Address,
+			})
 		}
 
-		tokenSoldAmount := utils.Quo(event.TokensSold, 18)
+		return nil
+	})
 
-		tokenSoldContract, err := erc20.NewErc20(tokenSoldAddress, client)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-
-		tokenSoldSymbol, err := tokenSoldContract.Symbol(nil)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-
-		// Token bought
-		tokenBoughtAddress, err := poolContract.Coins(nil, event.BoughtId)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-
-		tokenBoughtAmount := utils.Quo(event.TokensBought, 18)
-
-		tokenBoughtContract, err := erc20.NewErc20(tokenBoughtAddress, client)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-
-		tokenBoughtSymbol, err := tokenBoughtContract.Symbol(nil)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-
-		swaps = append(swaps, interfaces.PoolTokenExchange{
-			User:               common.HexToAddress("0x" + vLog.Topics[1].Hex()[26:]),
-			TokenSoldAddress:   tokenSoldAddress,
-			TokenSoldAmount:    tokenSoldAmount,
-			TokenBoughtAddress: tokenBoughtAddress,
-			TokenBoughtAmount:  tokenBoughtAmount,
-			SymbolSold:         tokenSoldSymbol,
-			SymbolBought:       tokenBoughtSymbol,
-			TxHash:             vLog.TxHash,
-			BlockTimestamp:     block.Time(),
-			PoolAddress:        vLog.Address,
-		})
-
+	if err != nil {
+		fmt.Println("fetchTokenExchanges pagination error:", err)
 	}
 
 	return swaps
 }
-
 func readWrappersSwaps() []interfaces.PoolTokenExchange {
 	wrappersSwaps := make([]interfaces.PoolTokenExchange, 0)
 	b, err := utils.ReadBucketFile(bucket_wrappers_swaps)
