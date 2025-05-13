@@ -8,8 +8,8 @@ import (
 )
 
 var endpoints = []string{
-	"https://api.curve.fi/v1/getPools/all",
-	"https://api-core.curve.fi/v1/getPlatforms",
+	"https://api.curve.finance/v1/getPools/all",
+	"https://api-core.curve.finance/v1/getPlatforms",
 }
 
 var endpointsBucket = []string{

@@ -14,7 +14,7 @@ type GaugeResp struct {
 func GetAllGauges() []interfaces.Gauge {
 
 	gauges := make([]interfaces.Gauge, 0)
-	response, err := http.Get("https://api.curve.fi/api/getAllGauges")
+	response, err := http.Get("https://api.curve.finance/api/getAllGauges")
 	if err != nil {
 		return gauges
 	}

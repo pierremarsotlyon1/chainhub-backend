@@ -8,7 +8,7 @@ import (
 )
 
 func GetAllCurvePools() ([]interfaces.CurvePool, error) {
-	response, err := http.Get("https://api.curve.fi/v1/getPools/all")
+	response, err := http.Get("https://api.curve.finance/v1/getPools/all")
 	if err != nil {
 		return nil, err
 	}
