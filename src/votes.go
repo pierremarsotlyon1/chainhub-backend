@@ -21,6 +21,7 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
@@ -56,23 +57,35 @@ func FetchVotes(client *ethclient.Client, currentBlock uint64) {
 	fmt.Println("Already", len(votes), "votes")
 
 	err := utils.ForEachBlockRange(from, currentBlock, 499, func(start uint64, end uint64) error {
-		query := ethereum.FilterQuery{
-			FromBlock: big.NewInt(int64(start)),
-			ToBlock:   big.NewInt(int64(end)),
-			Addresses: []common.Address{CURVE_OWNERSHIP_VOTER, CURVE_PARAMETER_VOTER},
-			Topics: [][]common.Hash{{
-				VOTE_CREATE_TOPIC,
-				VOTE_EXECUTED_TOPIC,
-				CAST_VOTE_TOPIC,
-			}},
+		topicList := []common.Hash{
+			VOTE_CREATE_TOPIC,
+			VOTE_EXECUTED_TOPIC,
+			CAST_VOTE_TOPIC,
+		}
+		var allLogs []types.Log
+
+		for _, topic := range topicList {
+			query := ethereum.FilterQuery{
+				FromBlock: big.NewInt(int64(start)),
+				ToBlock:   big.NewInt(int64(end)),
+				Addresses: []common.Address{
+					CURVE_OWNERSHIP_VOTER,
+					CURVE_PARAMETER_VOTER,
+				},
+				Topics: [][]common.Hash{
+					{topic},
+				},
+			}
+
+			logs, err := client.FilterLogs(context.Background(), query)
+			if err != nil {
+				return fmt.Errorf("FetchVotes logs error for topic %s: %w", topic.Hex(), err)
+			}
+
+			allLogs = append(allLogs, logs...)
 		}
 
-		logs, err := client.FilterLogs(context.Background(), query)
-		if err != nil {
-			return fmt.Errorf("FetchVotes logs error: %w", err)
-		}
-
-		for _, vLog := range logs {
+		for _, vLog := range allLogs {
 			voterContract, err := voter.NewVoter(vLog.Address, client)
 			if err != nil {
 				panic(err)
