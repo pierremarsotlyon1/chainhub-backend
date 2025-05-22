@@ -308,10 +308,10 @@ func estimatedWithCowswapBurner(earned map[string]float64, mainnetClient *ethcli
 		for i := range allPools[poolIndex].Coins {
 			coinAddress := common.HexToAddress(allPools[poolIndex].Coins[i].Address)
 
-			// Swip SPT-PT/IBT-f because cowswap can't swap it
-			if strings.EqualFold(coinAddress.Hex(), "0x3523dE26602BEC599a01DA5F0Ca91df9b85964E7") {
+			if strings.EqualFold(coinAddress.Hex(), "0xc425c0877C7B0f8179CDBd636b2eFe3204B24bC4") {
 				continue
 			}
+
 			_, exists := coinsMap[coinAddress]
 			if exists {
 				continue
@@ -398,6 +398,7 @@ func estimatedWithCowswapBurner(earned map[string]float64, mainnetClient *ethcli
 			if !ok {
 				usdPrice = 0.0
 			}
+
 			totalFees += balance * usdPrice
 		}
 	}
@@ -471,6 +472,7 @@ func estimatedWithCowswapBurner(earned map[string]float64, mainnetClient *ethcli
 	feesInPoolResponses := utils.Multicall(client, multicalls, MULTICALL_CHAIN[chain], big.NewInt(int64(collectBlockNumber)))
 
 	for _, poolAddress := range poolsWithWithdrawAdminFee {
+
 		for _, pool := range allPools {
 			if strings.EqualFold(pool.Address, poolAddress.Hex()) {
 				ownerRes := feesInPoolResponses[0]
@@ -553,6 +555,7 @@ func estimatedWithCowswapBurner(earned map[string]float64, mainnetClient *ethcli
 	}
 
 	for _, poolAddress := range poolsWithClaimAdminFee {
+
 		for _, pool := range allPools {
 			if strings.EqualFold(pool.Address, poolAddress.Hex()) {
 				feesInPoolResponse := feesInPoolResponses[0]
