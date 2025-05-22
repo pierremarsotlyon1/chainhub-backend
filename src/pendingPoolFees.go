@@ -307,6 +307,11 @@ func estimatedWithCowswapBurner(earned map[string]float64, mainnetClient *ethcli
 	for poolIndex := range allPools {
 		for i := range allPools[poolIndex].Coins {
 			coinAddress := common.HexToAddress(allPools[poolIndex].Coins[i].Address)
+
+			// Swip SPT-PT/IBT-f because cowswap can't swap it
+			if strings.EqualFold(coinAddress.Hex(), "0x3523dE26602BEC599a01DA5F0Ca91df9b85964E7") {
+				continue
+			}
 			_, exists := coinsMap[coinAddress]
 			if exists {
 				continue
