@@ -230,11 +230,15 @@ func FetchVotes(client *ethclient.Client, currentBlock uint64) {
 		}
 	}
 
+	for i := range votes {
+		votes[i].Voters = removeDuplicateVoters(votes[i].Voters)
+	}
+
 	writeVotes(votes)
 	utils.WriteConfig(config, currentBlock, votes_config)
 }
 
-func removeDuplicateVoters(vote interfaces.Vote, voters []interfaces.Voter) []interfaces.Voter {
+func removeDuplicateVoters(voters []interfaces.Voter) []interfaces.Voter {
 	seen := make(map[common.Address]bool)
 	uniqueVoters := []interfaces.Voter{}
 
@@ -242,8 +246,6 @@ func removeDuplicateVoters(vote interfaces.Vote, voters []interfaces.Voter) []in
 		if !seen[v.Voter] {
 			seen[v.Voter] = true
 			uniqueVoters = append(uniqueVoters, v)
-		} else if vote.Id.Cmp(big.NewInt(954)) == 0 {
-			fmt.Println(v.Voter)
 		}
 	}
 
