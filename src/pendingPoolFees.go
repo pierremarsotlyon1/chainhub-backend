@@ -399,7 +399,14 @@ func estimatedWithCowswapBurner(earned map[string]float64, mainnetClient *ethcli
 				usdPrice = 0.0
 			}
 
-			totalFees += balance * usdPrice
+			amount := balance * usdPrice
+
+			// Not swap by Cowswap if total is under $500
+			if amount < 500 {
+				continue
+			}
+
+			totalFees += amount
 		}
 	}
 
