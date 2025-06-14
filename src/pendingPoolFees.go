@@ -406,6 +406,10 @@ func estimatedWithCowswapBurner(earned map[string]float64, mainnetClient *ethcli
 				continue
 			}
 
+			if strings.EqualFold("0xe2f3D42443605Fc4ad5bcE82F0e9BFffBCffA6Ca", coin.Address) {
+				continue
+			}
+
 			totalFees += amount
 		}
 	}
@@ -552,6 +556,10 @@ func estimatedWithCowswapBurner(earned map[string]float64, mainnetClient *ethcli
 					usdPrice, ok := coin.UsdPrice.(float64)
 					if !ok {
 						usdPrice = 0.0
+					}
+
+					if strings.EqualFold("0xe2f3D42443605Fc4ad5bcE82F0e9BFffBCffA6Ca", coin.Address) {
+						continue
 					}
 
 					totalFees += toWithdraw * usdPrice
