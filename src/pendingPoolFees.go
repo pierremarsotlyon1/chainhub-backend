@@ -662,14 +662,16 @@ func estimatedWithSimulation(earned map[string]float64, client *ethclient.Client
 
 		// Extract data
 		var success bool
-		balance, success = new(big.Int).SetString(firstResult.Trace[0].DecodedOutput[0].Value.(string), 10)
-		if !success {
-			balance = big.NewInt(0)
-		}
+		if len(firstResult.Trace) > 0 && len(lastResult.Trace) > 0 && len(firstResult.Trace[0].DecodedOutput) > 0 && len(lastResult.Trace[0].DecodedOutput) > 0 {
+			balance, success = new(big.Int).SetString(firstResult.Trace[0].DecodedOutput[0].Value.(string), 10)
+			if !success {
+				balance = big.NewInt(0)
+			}
 
-		newBalance, success = new(big.Int).SetString(lastResult.Trace[0].DecodedOutput[0].Value.(string), 10)
-		if !success {
-			newBalance = big.NewInt(0)
+			newBalance, success = new(big.Int).SetString(lastResult.Trace[0].DecodedOutput[0].Value.(string), 10)
+			if !success {
+				newBalance = big.NewInt(0)
+			}
 		}
 	} else {
 		// Use fork
