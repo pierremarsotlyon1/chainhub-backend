@@ -758,22 +758,20 @@ func fetchLastDistribution(client *ethclient.Client, currentBlock uint64, lastBl
 				continue
 			}
 
-			if !strings.EqualFold(utils.HOOKER_MAINNET.Hex(), event.From.Hex()) {
-				continue
-			}
+			if strings.EqualFold(utils.HOOKER_MAINNET.Hex(), event.From.Hex()) || strings.EqualFold(utils.FEE_ALLOCATOR.Hex(), event.From.Hex()) {
+				block, err := client.BlockByNumber(context.Background(), big.NewInt(int64(vLog.BlockNumber)))
+				if err != nil {
+					fmt.Println("BlockByNumber error:", err)
+					continue
+				}
 
-			block, err := client.BlockByNumber(context.Background(), big.NewInt(int64(vLog.BlockNumber)))
-			if err != nil {
-				fmt.Println("BlockByNumber error:", err)
-				continue
-			}
+				if block.Time()-timestamp > 2*utils.DAY_TO_SEC {
+					lastDistributionAmount = 0
+				}
 
-			if block.Time()-timestamp > 2*utils.DAY_TO_SEC {
-				lastDistributionAmount = 0
+				timestamp = block.Time()
+				lastDistributionAmount += uint64(utils.Quo(event.Value, 18))
 			}
-
-			timestamp = block.Time()
-			lastDistributionAmount += uint64(utils.Quo(event.Value, 18))
 		}
 
 		return nil
