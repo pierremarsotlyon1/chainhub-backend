@@ -26,17 +26,17 @@ func main() {
 
 	functionToExecute := argsWithoutProg[0]
 
-	alchemyApiKey := utils.GoDotEnvVariable("ALCHEMY_APIKEY_2")
+	drpcApiKey := utils.GoDotEnvVariable("DRPC_API_KEY")
 
 	if len(argsWithoutProg) > 1 {
-		alchemyApiKey = utils.GoDotEnvVariable(argsWithoutProg[1])
+		drpcApiKey = utils.GoDotEnvVariable(argsWithoutProg[1])
 	}
 
-	if len(alchemyApiKey) == 0 {
-		panic("ALCHEMY_APIKEY not set")
+	if len(drpcApiKey) == 0 {
+		panic("DRPC_API_KEY not set")
 	}
 
-	ALCHEMY_RPC_URL = "https://eth-mainnet.g.alchemy.com/v2/" + alchemyApiKey
+	ALCHEMY_RPC_URL = "https://lb.drpc.org/ethereum/" + drpcApiKey
 
 	client, err := ethclient.Dial(RPC_LOCAL_NODE)
 	if err != nil {
