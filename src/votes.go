@@ -125,7 +125,7 @@ func FetchVotes(client *ethclient.Client, currentBlock uint64) {
 					voteType = OWNERSHIP
 				}
 
-				ipfsId := ""
+				ipfsId := event.Metadata
 				description := ""
 				if strings.Contains(event.Metadata, "ipfs:") {
 					ipfsId = event.Metadata[len("ipfs:"):]
