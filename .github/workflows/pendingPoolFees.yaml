@@ -8,6 +8,7 @@ on:
 env:
   ALCHEMY_APIKEY: ${{ secrets.ALCHEMY_APIKEY }}
   ALCHEMY_APIKEY_2: ${{ secrets.ALCHEMY_APIKEY_2 }}
+  ALCHEMY_APIKEY_3: ${{ secrets.ALCHEMY_APIKEY_3 }}
   INFURA_APIKEY: ${{ secrets.INFURA_APIKEY }}
   TENDERLY_NODE: ${{ secrets.TENDERLY_NODE }}
   FORK_PK: ${{ secrets.FORK_PK }}
