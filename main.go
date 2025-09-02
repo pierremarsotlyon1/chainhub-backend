@@ -28,9 +28,9 @@ func main() {
 
 	alchemyApiKey := utils.GoDotEnvVariable("DRPC_API_KEY")
 
-	if len(argsWithoutProg) > 1 {
+	/*if len(argsWithoutProg) > 1 {
 		alchemyApiKey = utils.GoDotEnvVariable(argsWithoutProg[1])
-	}
+	}*/
 
 	if len(alchemyApiKey) == 0 {
 		panic("ALCHEMY_APIKEY not set")
