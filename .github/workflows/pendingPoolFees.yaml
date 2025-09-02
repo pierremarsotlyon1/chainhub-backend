@@ -18,6 +18,7 @@ env:
   ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
   DRPC_MAINNET: ${{ secrets.DRPC_MAINNET }}
   GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+  DRPC_API_KEY: ${{ secrets.DRPC_API_KEY }}
 
 jobs:
   build: # make sure build/ci work properly

@@ -11,7 +11,7 @@ func GetPublicRpcUrl(chainName string) string {
 	case "celo":
 		return "https://celo-mainnet.infura.io/v3/" + GoDotEnvVariable("INFURA_APIKEY")
 	case "optimism":
-		return "https://opt-mainnet.g.alchemy.com/v2/" + GoDotEnvVariable("ALCHEMY_APIKEY_2")
+		return "https://lb.drpc.org/optimism/" + GoDotEnvVariable("DRPC_API_KEY")
 	case "xdai":
 		return "https://gnosis-mainnet.public.blastapi.io"
 	case "avalanche":
