@@ -172,8 +172,8 @@ func FetchBounties(client *ethclient.Client, currentBlock uint64, alchemyRpcUrl 
 	fmt.Println("Fetching votium")
 	allClaimed = append(allClaimed, fetchVotium(client, curvePools, currentBlock, config)...)
 
-	fmt.Println("Fetching votemarket v1")
-	allClaimed = append(allClaimed, fetchVotemarketV1(client, curvePools, currentBlock, config)...)
+	//fmt.Println("Fetching votemarket v1")
+	//allClaimed = append(allClaimed, fetchVotemarketV1(client, curvePools, currentBlock, config)...)
 
 	fmt.Println("Fetching votemarket v2")
 	allClaimed = append(allClaimed, fetchVotemarketV2(client, curvePools, currentBlock, config)...)
@@ -187,8 +187,8 @@ func FetchBounties(client *ethclient.Client, currentBlock uint64, alchemyRpcUrl 
 	fmt.Println("Fetching yBribe")
 	allClaimed = append(allClaimed, fetchYBribe(client, curvePools, currentBlock, config, alchemyRpcUrl)...)
 
-	fmt.Println("Fetching bribe crv finance")
-	allClaimed = append(allClaimed, fetchBribeCrvFinance(client, curvePools, currentBlock, config, alchemyRpcUrl)...)
+	//fmt.Println("Fetching bribe crv finance")
+	//allClaimed = append(allClaimed, fetchBribeCrvFinance(client, curvePools, currentBlock, config, alchemyRpcUrl)...)
 
 	fmt.Println(len(allClaimed), " claims found")
 
