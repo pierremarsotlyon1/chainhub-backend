@@ -28,6 +28,10 @@ func GetPublicRpcUrl(chainName string) string {
 		return "https://rpc.ankr.com/bsc"
 	case "x-layer":
 		return "https://rpc.xlayer.tech"
+	case "sonic":
+		return "https://lb.drpc.org/sonic/" + GoDotEnvVariable("DRPC_API_KEY")
+	case "taiko":
+		return "https://lb.drpc.org/taiko/" + GoDotEnvVariable("DRPC_API_KEY")
 	default:
 		return ""
 	}

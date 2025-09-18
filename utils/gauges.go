@@ -3,6 +3,7 @@ package utils
 import (
 	"encoding/json"
 	"io"
+	"log"
 	"main/interfaces"
 	"net/http"
 )
@@ -26,6 +27,7 @@ func GetAllGauges() []interfaces.Gauge {
 
 	gaugeResp := new(GaugeResp)
 	if err := json.Unmarshal(body, gaugeResp); err != nil {
+		log.Println(err)
 		return gauges
 	}
 

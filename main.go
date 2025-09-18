@@ -90,5 +90,7 @@ func main() {
 		scrvusd.ScrvusdApys(client, lastestBlock.NumberU64())
 	case "curveApiCache":
 		src.CurveApiCache()
+	case "checkpoint":
+		src.CheckpointGauges()
 	}
 }

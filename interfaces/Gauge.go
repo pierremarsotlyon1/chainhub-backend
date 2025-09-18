@@ -13,19 +13,22 @@ type Gauge struct {
 	NextMinApr          float64 `json:"nextMinApr"`
 	NextMaxApr          float64 `json:"nextMaxApr"`
 	SideChain           bool    `json:"side_chain"`
-	GaugeController     struct {
+	GaugeData           struct {
+		InflationRate interface{} `json:"inflation_rate"`
+	} `json:"gauge_data"`
+	GaugeController struct {
 		GaugeRelativeWeight       string `json:"gauge_relative_weight"`
 		GaugeFutureRelativeWeight string `json:"gauge_future_relative_weight"`
 	} `json:"gauge_controller"`
-	IsPool            bool                `json:"isPool"`
-	GaugeCrvApy       []float64           `json:"gaugeCrvApy"`
-	GaugeFutureCrvApy []float64           `json:"gaugeFutureCrvApy"`
-	PoolUrls          map[string][]string `json:"poolUrls"`
-	LpTokenPrice      float64             `json:"lpTokenPrice"`
-	PendingFees       float64             `json:"pendingFees"`
-	AmountStakedUSD   float64             `json:"amountStakedUSD"`
-
-	WorkingSupply       float64     `json:"workingSupply"`
-	VirtualPrice        interface{} `json:"virtualPrice"`
-	CanCalculateInTheUI bool        `json:"canCalculateInTheUI"`
+	IsPool              bool                `json:"isPool"`
+	GaugeCrvApy         []float64           `json:"gaugeCrvApy"`
+	GaugeFutureCrvApy   []float64           `json:"gaugeFutureCrvApy"`
+	PoolUrls            map[string][]string `json:"poolUrls"`
+	LpTokenPrice        float64             `json:"lpTokenPrice"`
+	PendingFees         float64             `json:"pendingFees"`
+	AmountStakedUSD     float64             `json:"amountStakedUSD"`
+	BlockchainId        string              `json:"blockchainId"`
+	WorkingSupply       float64             `json:"workingSupply"`
+	VirtualPrice        interface{}         `json:"virtualPrice"`
+	CanCalculateInTheUI bool                `json:"canCalculateInTheUI"`
 }

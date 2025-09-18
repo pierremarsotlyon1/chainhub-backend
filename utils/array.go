@@ -1,6 +1,10 @@
 package utils
 
-import "github.com/ethereum/go-ethereum/common"
+import (
+	"slices"
+
+	"github.com/ethereum/go-ethereum/common"
+)
 
 func ChunkAddressSlice(slice []common.Address, chunkSize int) [][]common.Address {
 	var chunks [][]common.Address
@@ -15,11 +19,5 @@ func ChunkAddressSlice(slice []common.Address, chunkSize int) [][]common.Address
 }
 
 func ArrayContains(s []string, str string) bool {
-	for _, v := range s {
-		if v == str {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(s, str)
 }
