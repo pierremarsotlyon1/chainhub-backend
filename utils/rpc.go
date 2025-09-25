@@ -32,6 +32,8 @@ func GetPublicRpcUrl(chainName string) string {
 		return "https://lb.drpc.org/sonic/" + GoDotEnvVariable("DRPC_API_KEY")
 	case "taiko":
 		return "https://lb.drpc.org/taiko/" + GoDotEnvVariable("DRPC_API_KEY")
+	case "mainnet":
+		return "https://lb.drpc.org/ethereum/" + GoDotEnvVariable("DRPC_API_KEY")
 	default:
 		return ""
 	}

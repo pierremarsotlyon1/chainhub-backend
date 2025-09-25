@@ -7,6 +7,8 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"main/contracts/curveGC"
+	"main/contracts/multicall"
 	"main/utils"
 	"math/big"
 	"os"
@@ -101,31 +103,72 @@ func CheckpointGauges() {
 
 	gauges := utils.GetAllGauges()
 
-	// Group by chain
-	byChain := map[string][]common.Address{}
+	// Fetch the gauge inflation onchain
+	rpcMainnetURL := utils.GetPublicRpcUrl("mainnet")
+
+	mainnetClient, err := ethclient.DialContext(context.Background(), rpcMainnetURL)
+	if err != nil {
+		log.Printf("[%s] dial: %v", "mainnet", err)
+		return
+	}
+	defer mainnetClient.Close()
+
+	currentBlockNumber, err := mainnetClient.BlockNumber(context.Background())
+	if err != nil {
+		log.Printf("[%s] dial: %v", "mainnet", err)
+		return
+	}
+
+	gcAbi, err := curveGC.CurveGCMetaData.GetAbi()
+	if err != nil {
+		log.Printf("[%s] dial: %v", "mainnet", err)
+		return
+	}
+
+	calls := make([]multicall.Multicall3Call, 0)
 	for _, gauge := range gauges {
-
 		chain := strings.ToLower(strings.TrimSpace(gauge.BlockchainId))
-
 		if !gauge.IsPool || !common.IsHexAddress(gauge.Gauge) || !utils.ArrayContains(chainsSupported, chain) {
 			continue
 		}
 
-		// Check if we have some CRV rewards
-		switch v := gauge.GaugeData.InflationRate.(type) {
-		case string:
-			if v == "0" {
-				continue
-			}
-		case float64:
-			if v == 0 {
-				continue
-			}
-		case int:
-			if v == 0 {
-				continue
-			}
-		default:
+		gaugeAddress := gauge.RootGauge
+		if len(gaugeAddress) == 0 {
+			gaugeAddress = gauge.Gauge
+		}
+
+		get_gauge_weight, err := gcAbi.Pack("get_gauge_weight", common.HexToAddress(gaugeAddress))
+		if err != nil {
+			log.Printf("[%s] dial: %v", "mainnet", err)
+			return
+		}
+
+		calls = append(calls, multicall.Multicall3Call{
+			Target:   utils.CURVE_GC_ADDRESS,
+			CallData: get_gauge_weight,
+		})
+	}
+
+	multicallResponses := utils.Multicall(mainnetClient, calls, MULTICALL_CHAIN["ethereum"], big.NewInt(int64(currentBlockNumber)))
+
+	// Group by chain
+	byChain := map[string][]common.Address{}
+	for _, gauge := range gauges {
+		chain := strings.ToLower(strings.TrimSpace(gauge.BlockchainId))
+		if !gauge.IsPool || !common.IsHexAddress(gauge.Gauge) || !utils.ArrayContains(chainsSupported, chain) {
+			continue
+		}
+
+		gaugeWeightRes := multicallResponses[0]
+		multicallResponses = multicallResponses[1:]
+
+		if !gaugeWeightRes.Success {
+			log.Printf("Error when fetching gauge weight for %s", gauge.Gauge)
+			return
+		}
+
+		gaugeWeight := big.NewInt(0).SetBytes(gaugeWeightRes.ReturnData)
+		if gaugeWeight.Cmp(big.NewInt(0)) == 0 {
 			continue
 		}
 

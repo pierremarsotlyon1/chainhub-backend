@@ -3,6 +3,7 @@ package interfaces
 type Gauge struct {
 	Pool                string  `json:"swap"`
 	Gauge               string  `json:"gauge"`
+	RootGauge           string  `json:"rootGauge"`
 	LendingVaultAddress string  `json:"lendingVaultAddress"`
 	LP                  string  `json:"swap_token"`
 	Name                string  `json:"name"`
