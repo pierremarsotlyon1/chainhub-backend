@@ -15,8 +15,6 @@ import (
 var ALCHEMY_RPC_URL = ""
 var RPC_LOCAL_NODE = "/root/geth/data/geth/geth.ipc"
 
-// First arg : script to execut
-// Second arg : alchemy api key, if not set, get default one
 func main() {
 
 	argsWithoutProg := os.Args[1:]
@@ -26,17 +24,7 @@ func main() {
 
 	functionToExecute := argsWithoutProg[0]
 
-	alchemyApiKey := utils.GoDotEnvVariable("DRPC_API_KEY")
-
-	/*if len(argsWithoutProg) > 1 {
-		alchemyApiKey = utils.GoDotEnvVariable(argsWithoutProg[1])
-	}*/
-
-	if len(alchemyApiKey) == 0 {
-		panic("ALCHEMY_APIKEY not set")
-	}
-
-	ALCHEMY_RPC_URL = "https://lb.drpc.org/ethereum/" + alchemyApiKey
+	ALCHEMY_RPC_URL = utils.GetPublicRpcUrl("mainnet")
 
 	client, err := ethclient.Dial(RPC_LOCAL_NODE)
 	if err != nil {
@@ -55,7 +43,7 @@ func main() {
 
 	switch functionToExecute {
 	case "bounties":
-		src.FetchBounties(client, lastestBlock.NumberU64(), ALCHEMY_RPC_URL, utils.GoDotEnvVariable("DRPC_API_KEY"))
+		src.FetchBounties(client, lastestBlock.NumberU64(), ALCHEMY_RPC_URL)
 	case "locks":
 		src.FetchLocks(client, lastestBlock.NumberU64())
 	case "votes":
@@ -67,7 +55,7 @@ func main() {
 	case "pegkeepers":
 		src.FetchPegKeepers(client, lastestBlock.NumberU64(), lastestBlock.Time())
 	case "pendingPoolFees":
-		clientDrpc, err := ethclient.Dial(utils.GoDotEnvVariable("DRPC_MAINNET"))
+		clientDrpc, err := ethclient.Dial(utils.GetPublicRpcUrl("mainnet"))
 		if err != nil {
 			panic(err)
 		}

@@ -155,7 +155,7 @@ const (
 	BUCKET_BOUNTIES_STATS_FILE = BUCKET_BOUNTIES_DIR + "/stats.json"
 )
 
-func FetchBounties(client *ethclient.Client, currentBlock uint64, alchemyRpcUrl string, drpcKey string) {
+func FetchBounties(client *ethclient.Client, currentBlock uint64, alchemyRpcUrl string) {
 
 	// Fetch curve pools
 	curvePools, _ := utils.GetAllCurvePools()
@@ -179,7 +179,7 @@ func FetchBounties(client *ethclient.Client, currentBlock uint64, alchemyRpcUrl 
 	allClaimed = append(allClaimed, fetchVotemarketV2(client, curvePools, currentBlock, config)...)
 
 	fmt.Println("Fetching votemarket vm v2")
-	allClaimed = append(allClaimed, fetchVotemarketVmV2V1(curvePools, drpcKey)...)
+	allClaimed = append(allClaimed, fetchVotemarketVmV2V1(curvePools)...)
 
 	fmt.Println("Fetching quest")
 	allClaimed = append(allClaimed, fetchQuest(client, curvePools, currentBlock, config)...)
@@ -434,14 +434,14 @@ func fetchVotemarketV2(client *ethclient.Client, curvePools []interfaces.CurvePo
 	return bountiesClaimed
 }
 
-func fetchVotemarketVmV2V1(curvePools []interfaces.CurvePool, drpcKey string) []interfaces.BountyClaimed {
+func fetchVotemarketVmV2V1(curvePools []interfaces.CurvePool) []interfaces.BountyClaimed {
 	bountiesClaimed := make([]interfaces.BountyClaimed, 0)
 	const maxBlockRange = 499
 
 	for _, vmv2Config := range VOTEMARKET_VMV2_ADDRESSES_V1 {
 		log.Println("Fetching bounties vm v2 on chain ", vmv2Config.ChainId)
 
-		client, err := ethclient.Dial("https://lb.drpc.org/ogrpc?network=" + vmv2Config.DrpcChainName + "&dkey=" + drpcKey)
+		client, err := ethclient.Dial(utils.GetPublicRpcUrl(vmv2Config.DrpcChainName))
 		if err != nil {
 			log.Println(err)
 			continue
