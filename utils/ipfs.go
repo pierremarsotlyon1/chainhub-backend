@@ -7,8 +7,21 @@ import (
 	"net/http"
 )
 
+var providers = []string{"https://4everland.io/ipfs/", "https://gateway.pinata.cloud/ipfs/", "https://ipfs.io/ipfs/"}
+
 func GetIpfs(ipfsId string) string {
-	response, err := http.Get("https://gateway.pinata.cloud/ipfs/" + ipfsId)
+	for _, provider := range providers {
+		description := fetchIpfs(ipfsId, provider)
+		if len(description) > 0 {
+			return description
+		}
+	}
+
+	return ""
+}
+
+func fetchIpfs(ipfsId string, provider string) string {
+	response, err := http.Get(provider + ipfsId)
 	if err != nil {
 		return ""
 	}

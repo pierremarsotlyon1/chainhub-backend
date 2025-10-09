@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -69,6 +70,7 @@ func getAbi(address string) (abi.ABI, error) {
 			GoDotEnvVariable("ETHERSCAN_API_KEY"),
 		)
 		resp, err := http.Get(url)
+		time.Sleep(2 * time.Second)
 		if err != nil {
 			return abi.ABI{}, fmt.Errorf("failed to fetch ABI: %v", err)
 		}
@@ -155,11 +157,6 @@ func ParseEvmScript(evmHex string) ([]interfaces.DecodedAction, error) {
 
 		decoded, err := decodeCalldata(aragon_target, "0x"+hex.EncodeToString(data))
 		if err != nil {
-			actions = append(actions, interfaces.DecodedAction{
-				Index:    i,
-				Target:   aragon_target,
-				Function: fmt.Sprintf("⚠️ decode error: %v", err),
-			})
 			i++
 			continue
 		}

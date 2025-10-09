@@ -225,6 +225,7 @@ func FetchVotes(client *ethclient.Client, currentBlock uint64) {
 				fmt.Println(votes[i].Id, err)
 			}
 		}
+
 		if len(votes[i].Description) == 0 {
 			votes[i].Description = utils.GetIpfs(votes[i].IpfsId)
 		}
@@ -233,7 +234,6 @@ func FetchVotes(client *ethclient.Client, currentBlock uint64) {
 			actions, err := utils.ParseEvmScript(votes[i].Script)
 			if err == nil {
 				votes[i].Actions = actions
-				fmt.Println(votes[i].Id, len(votes[i].Actions))
 			}
 		}
 	}
