@@ -3,7 +3,7 @@ run-name: ${{ github.actor }} 🚀
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '*/30 * * * *'
 
 env:
   ALCHEMY_APIKEY: ${{ secrets.ALCHEMY_APIKEY }}
@@ -38,7 +38,6 @@ jobs:
         run: |
           go run ./main.go bounties
           go run ./main.go crvusd ALCHEMY_APIKEY_3
-          go run ./main.go llamalend
           go run ./main.go locks
           go run ./main.go weeklyFees
           go run ./main.go pegkeepers ALCHEMY_APIKEY_3
