@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"main/contracts/aragon"
 	"main/interfaces"
 	"math/big"
 	"net/http"
@@ -55,24 +56,32 @@ func stringifyBigInts(v interface{}) interface{} {
 // fetch ABI from Etherscan
 // -----------------------------------------------------------------------------
 func getAbi(address string) (abi.ABI, error) {
-	url := fmt.Sprintf(
-		"https://api.etherscan.io/v2/api?chainid=1&module=contract&action=getabi&address=%s&apikey=%s",
-		address,
-		GoDotEnvVariable("ETHERSCAN_API_KEY"),
-	)
-	resp, err := http.Get(url)
-	if err != nil {
-		return abi.ABI{}, fmt.Errorf("failed to fetch ABI: %v", err)
+	if strings.EqualFold(address, aragon_target) {
+		_abi, err := aragon.AragonMetaData.GetAbi()
+		if err != nil {
+			return abi.ABI{}, err
+		}
+		return *_abi, nil
+	} else {
+		url := fmt.Sprintf(
+			"https://api.etherscan.io/v2/api?chainid=1&module=contract&action=getabi&address=%s&apikey=%s",
+			address,
+			GoDotEnvVariable("ETHERSCAN_API_KEY"),
+		)
+		resp, err := http.Get(url)
+		if err != nil {
+			return abi.ABI{}, fmt.Errorf("failed to fetch ABI: %v", err)
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		var res struct {
+			Result string `json:"result"`
+		}
+		if err := json.Unmarshal(body, &res); err != nil {
+			return abi.ABI{}, fmt.Errorf("failed to parse response: %v", err)
+		}
+		return abi.JSON(strings.NewReader(res.Result))
 	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	var res struct {
-		Result string `json:"result"`
-	}
-	if err := json.Unmarshal(body, &res); err != nil {
-		return abi.ABI{}, fmt.Errorf("failed to parse response: %v", err)
-	}
-	return abi.JSON(strings.NewReader(res.Result))
 }
 
 // -----------------------------------------------------------------------------

@@ -229,7 +229,7 @@ func FetchVotes(client *ethclient.Client, currentBlock uint64) {
 			votes[i].Description = utils.GetIpfs(votes[i].IpfsId)
 		}
 
-		if len(votes[i].Actions) == 0 {
+		if len(votes[i].Actions) == 0 || strings.Contains(votes[i].Actions[0].Function, "decode error") {
 			actions, err := utils.ParseEvmScript(votes[i].Script)
 			if err == nil {
 				votes[i].Actions = actions

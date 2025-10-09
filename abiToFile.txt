@@ -41,3 +41,4 @@ abigen --abi=./abis/CurveGaugeL2.json --pkg=curveGaugeL2 --out=curveGaugeL2.go
 abigen --abi=./abis/VmV2.json --pkg=vmV2 --out=vmV2.go
 abigen --abi=./abis/VmRemoteManager.json --pkg=vmRemoteManager --out=vmRemoteManager.go
 abigen --abi=./abis/VmTokenFactory.json --pkg=vmTokenFactory --out=vmTokenFactory.go
+abigen --abi=./abis/Aragon.json --pkg=aragon --out=aragon.go
