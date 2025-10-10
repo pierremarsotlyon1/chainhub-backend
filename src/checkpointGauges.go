@@ -10,6 +10,7 @@ import (
 	"main/contracts/curveGC"
 	"main/contracts/multicall"
 	"main/utils"
+	"math"
 	"math/big"
 	"os"
 	"strings"
@@ -64,7 +65,7 @@ func mustABI(jsonStr string) abi.ABI {
 }
 
 func loadKey() (*ecdsa.PrivateKey, common.Address, error) {
-	pk := os.Getenv("PRIVATE_KEY")
+	pk := utils.GoDotEnvVariable("PRIVATE_KEY")
 	if pk == "" {
 		return nil, common.Address{}, errors.New("PRIVATE_KEY missing")
 	}
@@ -259,6 +260,10 @@ func CheckpointGauges() {
 			}
 			maxFee := new(big.Int).Mul(base, big.NewInt(2))
 			maxFee.Add(maxFee, tip)
+
+			if chainID.Cmp(big.NewInt(167000)) == 0 {
+				gas = uint64(math.Max(float64(gas), float64(250_000*len(batch))))
+			}
 
 			// Build tx
 			tx := types.NewTx(&types.DynamicFeeTx{
