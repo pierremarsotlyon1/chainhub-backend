@@ -399,6 +399,10 @@ func estimatedWithCowswapBurner(earned map[string]float64, mainnetClient *ethcli
 				usdPrice = 0.0
 			}
 
+			if strings.EqualFold("0x4f493B7dE8aAC7d55F71853688b1F7C8F0243C85", coin.Address) && usdPrice > 1_000_000 {
+				usdPrice = 1
+			}
+
 			amount := balance * usdPrice
 
 			// Not swap by Cowswap if total is under $500
@@ -556,6 +560,10 @@ func estimatedWithCowswapBurner(earned map[string]float64, mainnetClient *ethcli
 					usdPrice, ok := coin.UsdPrice.(float64)
 					if !ok {
 						usdPrice = 0.0
+					}
+
+					if strings.EqualFold("0x4f493B7dE8aAC7d55F71853688b1F7C8F0243C85", coin.Address) && usdPrice > 1_000_000 {
+						usdPrice = 1
 					}
 
 					if strings.EqualFold("0xe2f3D42443605Fc4ad5bcE82F0e9BFffBCffA6Ca", coin.Address) {
