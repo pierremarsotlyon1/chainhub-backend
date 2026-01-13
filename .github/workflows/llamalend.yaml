@@ -3,7 +3,7 @@ run-name: ${{ github.actor }} 🚀
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '*/30 * * * *'
 
 env:
   ALCHEMY_APIKEY: ${{ secrets.ALCHEMY_APIKEY }}
@@ -25,18 +25,4 @@ jobs:
           go-version: '1.22.1'
 
       - run: go run ./main.go llamalend
-
-      - name: Update from main
-        run: |
-          git config --local user.email "actions@github.com"
-          git config --local user.name "Automation"
-          git checkout main
-          git pull
-          git checkout ${{github.ref_name}}
-          git pull
-        shell: bash
-        if: always()
-
-      - name: Commit and Push
-        uses: stefanzweifel/git-auto-commit-action@v5
 
