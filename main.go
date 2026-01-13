@@ -63,7 +63,8 @@ func main() {
 	case "inflation":
 		src.Inflation(client, lastestBlock.NumberU64(), lastestBlock.Time())
 	case "llamalend":
-		src.Llamalend()
+		src.LlamalendHistorical()
+		src.LlamalendFixSort()
 	case "peg":
 		src.Pegs(client)
 	case "weeklyFees":
