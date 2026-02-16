@@ -734,14 +734,15 @@ func fetchLastDistribution(client *ethclient.Client, currentBlock uint64, lastBl
 		from = 19526061
 	}
 
+	feesDistributedTopic := crypto.Keccak256Hash([]byte("FeesDistributed(uint256,uint256)"))
 	timestamp := lastTimestamp
 
 	err := utils.ForEachBlockRange(from, currentBlock, 499, func(start uint64, end uint64) error {
 		query := ethereum.FilterQuery{
 			FromBlock: big.NewInt(int64(start)),
 			ToBlock:   big.NewInt(int64(end)),
-			Addresses: []common.Address{utils.CRVUSD_ADDRESS},
-			Topics:    [][]common.Hash{{common.HexToHash("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef")}},
+			Addresses: []common.Address{utils.FEE_ALLOCATOR},
+			Topics:    [][]common.Hash{{feesDistributedTopic}},
 		}
 
 		logs, err := client.FilterLogs(context.Background(), query)
@@ -750,36 +751,24 @@ func fetchLastDistribution(client *ethclient.Client, currentBlock uint64, lastBl
 		}
 
 		for _, vLog := range logs {
-			contract, err := erc20.NewErc20(vLog.Address, client)
+			if len(vLog.Data) < 64 {
+				continue
+			}
+
+			totalAmount := new(big.Int).SetBytes(vLog.Data[:32])
+
+			block, err := client.BlockByNumber(context.Background(), big.NewInt(int64(vLog.BlockNumber)))
 			if err != nil {
-				fmt.Println("ERC20 init error:", err)
+				fmt.Println("BlockByNumber error:", err)
 				continue
 			}
 
-			event, err := contract.ParseTransfer(vLog)
-			if err != nil {
-				fmt.Println("ParseTransfer error:", err)
-				continue
+			if block.Time()-timestamp > 2*utils.DAY_TO_SEC {
+				lastDistributionAmount = 0
 			}
 
-			if !strings.EqualFold(event.To.Hex(), utils.FEE_DISTRIBUTOR_MAINNET.Hex()) {
-				continue
-			}
-
-			if strings.EqualFold(utils.HOOKER_MAINNET.Hex(), event.From.Hex()) || strings.EqualFold(utils.FEE_ALLOCATOR.Hex(), event.From.Hex()) {
-				block, err := client.BlockByNumber(context.Background(), big.NewInt(int64(vLog.BlockNumber)))
-				if err != nil {
-					fmt.Println("BlockByNumber error:", err)
-					continue
-				}
-
-				if block.Time()-timestamp > 2*utils.DAY_TO_SEC {
-					lastDistributionAmount = 0
-				}
-
-				timestamp = block.Time()
-				lastDistributionAmount += uint64(utils.Quo(event.Value, 18))
-			}
+			timestamp = block.Time()
+			lastDistributionAmount += uint64(utils.Quo(totalAmount, 18))
 		}
 
 		return nil
