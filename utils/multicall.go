@@ -24,7 +24,7 @@ func Multicall(client *ethclient.Client, calls []multicall.Multicall3Call, multi
 		return nil
 	}
 
-	chunks := ChunkMulticall(calls, 50)
+	chunks := ChunkMulticall(calls, 20)
 
 	responses := make([]MulticallResponse, 0)
 
@@ -38,6 +38,7 @@ func Multicall(client *ethclient.Client, calls []multicall.Multicall3Call, multi
 		msg := ethereum.CallMsg{
 			To:   &multicallAddress,
 			Data: packedData,
+			Gas:  200_000_000,
 		}
 
 		result, err := client.CallContract(context.Background(), msg, blockNumber)

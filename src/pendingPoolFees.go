@@ -1098,7 +1098,7 @@ func callRevert(client *ethclient.Client, chain string, calldata []byte) bool {
 	msg := ethereum.CallMsg{
 		To:   &to,
 		Data: calldata,
-		Gas:  50_000_000,
+		Gas:  200_000_000,
 	}
 
 	// Simulation de l'exécution de la transaction
