@@ -28,6 +28,7 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
@@ -150,9 +151,19 @@ const (
 	stats_path      = "./data/stats.json"
 	bounties_config = "./data/configs/bounties-config.json"
 
+	votium_vecrv_config  = "./data/configs/bounties-config-votium-vecrv.json"
+	votium_vlcvx_config  = "./data/configs/bounties-config-votium-vlcvx.json"
+	votemarket_v2_config = "./data/configs/bounties-config-votemarket-v2.json"
+	quest_config         = "./data/configs/bounties-config-quest.json"
+	ybribe_config        = "./data/configs/bounties-config-ybribe.json"
+
 	BUCKET_BOUNTIES_DIR        = "data/bounties"
 	BUCKET_BOUNTIES_DATA_FILE  = BUCKET_BOUNTIES_DIR + "/data.json"
 	BUCKET_BOUNTIES_STATS_FILE = BUCKET_BOUNTIES_DIR + "/stats.json"
+
+	maxLogsBlockRange       = 5000
+	minLogsBlockRange       = 499
+	checkpointChunkInterval = 20
 )
 
 func FetchBounties(client *ethclient.Client, currentBlock uint64, alchemyRpcUrl string) {
@@ -163,32 +174,22 @@ func FetchBounties(client *ethclient.Client, currentBlock uint64, alchemyRpcUrl 
 	config := utils.ReadConfig(bounties_config)
 
 	// Bounties
-	allClaimed := make([]interfaces.BountyClaimed, 0)
-
-	previousClaims := readDataPath()
-
-	allClaimed = append(allClaimed, previousClaims...)
+	allClaimed := readDataPath()
 
 	fmt.Println("Fetching votium")
-	allClaimed = append(allClaimed, fetchVotium(client, curvePools, currentBlock, config)...)
-
-	//fmt.Println("Fetching votemarket v1")
-	//allClaimed = append(allClaimed, fetchVotemarketV1(client, curvePools, currentBlock, config)...)
+	allClaimed = fetchVotium(client, curvePools, currentBlock, config, allClaimed)
 
 	fmt.Println("Fetching votemarket v2")
-	allClaimed = append(allClaimed, fetchVotemarketV2(client, curvePools, currentBlock, config)...)
+	allClaimed = fetchVotemarketV2(client, curvePools, currentBlock, config, allClaimed)
 
 	fmt.Println("Fetching votemarket vm v2")
-	allClaimed = append(allClaimed, fetchVotemarketVmV2V1(curvePools)...)
+	allClaimed = fetchVotemarketVmV2V1(curvePools, allClaimed)
 
 	fmt.Println("Fetching quest")
-	allClaimed = append(allClaimed, fetchQuest(client, curvePools, currentBlock, config)...)
+	allClaimed = fetchQuest(client, curvePools, currentBlock, config, allClaimed)
 
 	fmt.Println("Fetching yBribe")
-	allClaimed = append(allClaimed, fetchYBribe(client, curvePools, currentBlock, config, alchemyRpcUrl)...)
-
-	//fmt.Println("Fetching bribe crv finance")
-	//allClaimed = append(allClaimed, fetchBribeCrvFinance(client, curvePools, currentBlock, config, alchemyRpcUrl)...)
+	allClaimed = fetchYBribe(client, curvePools, currentBlock, config, alchemyRpcUrl, allClaimed)
 
 	fmt.Println(len(allClaimed), " claims found")
 
@@ -252,32 +253,24 @@ func computeBountiesStats(allClaimed []interfaces.BountyClaimed) {
 
 	writeStats(stats)
 }
-func fetchVotium(client *ethclient.Client, curvePools []interfaces.CurvePool, currentBlock uint64, config interfaces.Config) []interfaces.BountyClaimed {
-	fromVeCRV := config.LastBlock
-	if fromVeCRV == 0 {
-		fromVeCRV = 14730003
+func fetchVotium(client *ethclient.Client, curvePools []interfaces.CurvePool, currentBlock uint64, config interfaces.Config, allClaimed []interfaces.BountyClaimed) []interfaces.BountyClaimed {
+	persisted := len(allClaimed)
+
+	checkpointTo := func(configPath string) func(lastBlock uint64) {
+		return func(lastBlock uint64) {
+			if len(allClaimed) > persisted {
+				writeDataPath(allClaimed)
+				persisted = len(allClaimed)
+			}
+			utils.WriteConfig(interfaces.Config{}, lastBlock, configPath)
+		}
 	}
 
-	const maxBlockRange = 499
-	bountiesClaimed := make([]interfaces.BountyClaimed, 0)
-
 	// veCRV
-	for start := fromVeCRV + 1; start <= currentBlock; start += maxBlockRange + 1 {
-		end := min(start+maxBlockRange, currentBlock)
+	fromVeCRV := resolveFromBlock(votium_vecrv_config, config, 14730003)
+	checkpointVeCRV := checkpointTo(votium_vecrv_config)
 
-		query := ethereum.FilterQuery{
-			FromBlock: big.NewInt(int64(start)),
-			ToBlock:   big.NewInt(int64(end)),
-			Addresses: VOTIUM_VE_CRV_ADDRESSES,
-			Topics:    [][]common.Hash{{common.HexToHash("0x51c8cd367a987b8c2f652c101ea7076ec8e4dfd33c4c77bb80e018e7143b6512")}},
-		}
-
-		logs, err := client.FilterLogs(context.Background(), query)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-
+	scanLogs(client, "votium-vecrv", fromVeCRV+1, currentBlock, VOTIUM_VE_CRV_ADDRESSES, common.HexToHash("0x51c8cd367a987b8c2f652c101ea7076ec8e4dfd33c4c77bb80e018e7143b6512"), func(logs []types.Log) {
 		for _, vLog := range logs {
 			votiumContract, err := votiumVECrv.NewVotiumVECrv(vLog.Address, client)
 			if err != nil {
@@ -291,35 +284,17 @@ func fetchVotium(client *ethclient.Client, curvePools []interfaces.CurvePool, cu
 				continue
 			}
 
-			bountiesClaimed = addVotiumClaim(client, bountiesClaimed, vLog.Address, event.Token, vLog.BlockNumber, event.Amount, vLog.TxHash, "")
+			allClaimed = addVotiumClaim(client, allClaimed, vLog.Address, event.Token, vLog.BlockNumber, event.Amount, vLog.TxHash, "")
 		}
-	}
+	}, checkpointVeCRV)
+
+	checkpointVeCRV(currentBlock)
 
 	// vlCVX V2
-	fromVLCVX := config.LastBlock
-	if fromVLCVX == 0 {
-		fromVLCVX = 13320168
-	}
+	fromVLCVX := resolveFromBlock(votium_vlcvx_config, config, 13320168)
+	checkpointVLCVX := checkpointTo(votium_vlcvx_config)
 
-	for start := fromVLCVX + 1; start <= currentBlock; start += maxBlockRange + 1 {
-		end := start + maxBlockRange
-		if end > currentBlock {
-			end = currentBlock
-		}
-
-		query := ethereum.FilterQuery{
-			FromBlock: big.NewInt(int64(start)),
-			ToBlock:   big.NewInt(int64(end)),
-			Addresses: VOTIUM_MERKLE_V2,
-			Topics:    [][]common.Hash{{common.HexToHash("0x4766921f5c59646d22d7d266a29164c8e9623684d8dfdbd931731dfdca025238")}},
-		}
-
-		logs, err := client.FilterLogs(context.Background(), query)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-
+	scanLogs(client, "votium-vlcvx", fromVLCVX+1, currentBlock, VOTIUM_MERKLE_V2, common.HexToHash("0x4766921f5c59646d22d7d266a29164c8e9623684d8dfdbd931731dfdca025238"), func(logs []types.Log) {
 		for _, vLog := range logs {
 			votiumContract, err := votiumMerkle.NewVotiumMerkle(vLog.Address, client)
 			if err != nil {
@@ -333,11 +308,13 @@ func fetchVotium(client *ethclient.Client, curvePools []interfaces.CurvePool, cu
 				continue
 			}
 
-			bountiesClaimed = addClaim(client, curvePools, bountiesClaimed, vLog.Address, event.Token, event.Token, vLog.BlockNumber, 0, event.Amount, vLog.TxHash, "ethereum", "vlCVX")
+			allClaimed = addClaim(client, curvePools, allClaimed, vLog.Address, event.Token, event.Token, vLog.BlockNumber, 0, event.Amount, vLog.TxHash, "ethereum", "vlCVX")
 		}
-	}
+	}, checkpointVLCVX)
 
-	return bountiesClaimed
+	checkpointVLCVX(currentBlock)
+
+	return allClaimed
 }
 func fetchVotemarketV1(client *ethclient.Client, curvePools []interfaces.CurvePool, currentBlock uint64, config interfaces.Config) []interfaces.BountyClaimed {
 	from := config.LastBlock
@@ -386,34 +363,19 @@ func fetchVotemarketV1(client *ethclient.Client, curvePools []interfaces.CurvePo
 
 	return bountiesClaimed
 }
-func fetchVotemarketV2(client *ethclient.Client, curvePools []interfaces.CurvePool, currentBlock uint64, config interfaces.Config) []interfaces.BountyClaimed {
-	from := config.LastBlock
-	if from == 0 {
-		from = 16376671
+func fetchVotemarketV2(client *ethclient.Client, curvePools []interfaces.CurvePool, currentBlock uint64, config interfaces.Config, allClaimed []interfaces.BountyClaimed) []interfaces.BountyClaimed {
+	persisted := len(allClaimed)
+	checkpoint := func(lastBlock uint64) {
+		if len(allClaimed) > persisted {
+			writeDataPath(allClaimed)
+			persisted = len(allClaimed)
+		}
+		utils.WriteConfig(interfaces.Config{}, lastBlock, votemarket_v2_config)
 	}
 
-	const maxBlockRange = 499
-	bountiesClaimed := make([]interfaces.BountyClaimed, 0)
+	from := resolveFromBlock(votemarket_v2_config, config, 16376671)
 
-	for start := from + 1; start <= currentBlock; start += maxBlockRange + 1 {
-		end := start + maxBlockRange
-		if end > currentBlock {
-			end = currentBlock
-		}
-
-		query := ethereum.FilterQuery{
-			FromBlock: big.NewInt(int64(start)),
-			ToBlock:   big.NewInt(int64(end)),
-			Addresses: VOTEMARKET_ADDRESSES_V2,
-			Topics:    [][]common.Hash{{common.HexToHash("0x6f9c9826be5976f3f82a3490c52a83328ce2ec7be9e62dcb39c26da5148d7c76")}},
-		}
-
-		logs, err := client.FilterLogs(context.Background(), query)
-		if err != nil {
-			fmt.Println("fetchVotemarketV2 logs error:", err)
-			continue
-		}
-
+	scanLogs(client, "votemarket-v2", from+1, currentBlock, VOTEMARKET_ADDRESSES_V2, common.HexToHash("0x6f9c9826be5976f3f82a3490c52a83328ce2ec7be9e62dcb39c26da5148d7c76"), func(logs []types.Log) {
 		for _, vLog := range logs {
 			votemarketContract, err := votemarketV2.NewVotemarketV2(vLog.Address, client)
 			if err != nil {
@@ -427,16 +389,18 @@ func fetchVotemarketV2(client *ethclient.Client, curvePools []interfaces.CurvePo
 				continue
 			}
 
-			bountiesClaimed = addClaim(client, curvePools, bountiesClaimed, vLog.Address, event.RewardToken, event.RewardToken, vLog.BlockNumber, 0, event.Amount, vLog.TxHash, "ethereum", "")
+			allClaimed = addClaim(client, curvePools, allClaimed, vLog.Address, event.RewardToken, event.RewardToken, vLog.BlockNumber, 0, event.Amount, vLog.TxHash, "ethereum", "")
 		}
-	}
+	}, checkpoint)
 
-	return bountiesClaimed
+	checkpoint(currentBlock)
+
+	return allClaimed
 }
 
-func fetchVotemarketVmV2V1(curvePools []interfaces.CurvePool) []interfaces.BountyClaimed {
-	bountiesClaimed := make([]interfaces.BountyClaimed, 0)
-	const maxBlockRange = 499
+func fetchVotemarketVmV2V1(curvePools []interfaces.CurvePool, allClaimed []interfaces.BountyClaimed) []interfaces.BountyClaimed {
+	persisted := len(allClaimed)
+	initialCount := len(allClaimed)
 
 	for _, vmv2Config := range VOTEMARKET_VMV2_ADDRESSES_V1 {
 		log.Println("Fetching bounties vm v2 on chain ", vmv2Config.ChainId)
@@ -457,64 +421,53 @@ func fetchVotemarketVmV2V1(curvePools []interfaces.CurvePool) []interfaces.Bount
 			for _, marketAddress := range market.Addresses {
 				configFilePath := "./data/configs/bounties-config-vm-v2-" + strconv.Itoa(vmv2Config.ChainId) + "-" + marketAddress.Hex() + ".json"
 				config := utils.ReadConfig(configFilePath)
-				utils.WriteConfig(config, currentBlockNumber, configFilePath)
 
 				from := config.LastBlock
 				if from == 0 {
 					from = uint64(market.BlockNumberDeployed)
 				}
 
-				log.Println(from, currentBlockNumber)
-
-				for start := from + 1; start <= currentBlockNumber; start += maxBlockRange + 1 {
-					end := start + maxBlockRange
-					if end > currentBlockNumber {
-						end = currentBlockNumber
+				checkpoint := func(lastBlock uint64) {
+					if len(allClaimed) > persisted {
+						writeDataPath(allClaimed)
+						persisted = len(allClaimed)
 					}
+					utils.WriteConfig(interfaces.Config{}, lastBlock, configFilePath)
+				}
 
-					query := ethereum.FilterQuery{
-						FromBlock: big.NewInt(int64(start)),
-						ToBlock:   big.NewInt(int64(end)),
-						Addresses: []common.Address{marketAddress},
-						Topics:    [][]common.Hash{{common.HexToHash("0x318e0a24a7fc05b12e358902d9d58475434a01768f87a4319fb35dc5b533e986")}},
-					}
+				votemarketContract, err := vmV2.NewVmV2(marketAddress, client)
+				if err != nil {
+					log.Println(err)
+					continue
+				}
 
-					logs, err := client.FilterLogs(context.Background(), query)
-					if err != nil {
-						log.Println("FilterLogs", err)
-						continue
-					}
+				remoteManagerAddress, err := votemarketContract.Remote(nil)
+				if err != nil {
+					log.Println(err)
+					continue
+				}
 
-					votemarketContract, err := vmV2.NewVmV2(marketAddress, client)
-					if err != nil {
-						log.Println(err)
-						continue
-					}
+				remoteContract, err := vmRemoteManager.NewVmRemoteManager(remoteManagerAddress, client)
+				if err != nil {
+					log.Println(err)
+					continue
+				}
 
-					remoteManagerAddress, err := votemarketContract.Remote(nil)
-					if err != nil {
-						log.Println(err)
-						continue
-					}
+				tokenFactoryAddress, err := remoteContract.TOKENFACTORY(nil)
+				if err != nil {
+					log.Println(err)
+					continue
+				}
 
-					remoteContract, err := vmRemoteManager.NewVmRemoteManager(remoteManagerAddress, client)
-					if err != nil {
-						log.Println(err)
-						continue
-					}
+				tokenFactoryContract, err := vmTokenFactory.NewVmTokenFactory(tokenFactoryAddress, client)
+				if err != nil {
+					log.Println(err)
+					continue
+				}
 
-					tokenFactoryAddress, err := remoteContract.TOKENFACTORY(nil)
-					if err != nil {
-						log.Println(err)
-						continue
-					}
+				label := "vm-v2-" + strconv.Itoa(vmv2Config.ChainId) + "-" + marketAddress.Hex()
 
-					tokenFactoryContract, err := vmTokenFactory.NewVmTokenFactory(tokenFactoryAddress, client)
-					if err != nil {
-						log.Println(err)
-						continue
-					}
-
+				scanLogs(client, label, from+1, currentBlockNumber, []common.Address{marketAddress}, common.HexToHash("0x318e0a24a7fc05b12e358902d9d58475434a01768f87a4319fb35dc5b533e986"), func(logs []types.Log) {
 					for _, vLog := range logs {
 						event, err := votemarketContract.ParseClaim(vLog)
 						if err != nil {
@@ -549,42 +502,32 @@ func fetchVotemarketVmV2V1(curvePools []interfaces.CurvePool) []interfaces.Bount
 							continue
 						}
 
-						bountiesClaimed = addClaim(client, curvePools, bountiesClaimed, vLog.Address, realTokenReward, campaign.RewardToken, vLog.BlockNumber, event.Epoch.Uint64(), event.Amount, vLog.TxHash, tokenRewardChain, "")
+						allClaimed = addClaim(client, curvePools, allClaimed, vLog.Address, realTokenReward, campaign.RewardToken, vLog.BlockNumber, event.Epoch.Uint64(), event.Amount, vLog.TxHash, tokenRewardChain, "")
 					}
-				}
+				}, checkpoint)
+
+				checkpoint(currentBlockNumber)
 			}
 		}
 	}
 
-	log.Println("Fetched", len(bountiesClaimed), "claimed on vm v2")
-	return bountiesClaimed
+	log.Println("Fetched", len(allClaimed)-initialCount, "claimed on vm v2")
+	return allClaimed
 }
 
-func fetchQuest(client *ethclient.Client, curvePools []interfaces.CurvePool, currentBlock uint64, config interfaces.Config) []interfaces.BountyClaimed {
-	from := config.LastBlock
-	if from == 0 {
-		from = 14784920
+func fetchQuest(client *ethclient.Client, curvePools []interfaces.CurvePool, currentBlock uint64, config interfaces.Config, allClaimed []interfaces.BountyClaimed) []interfaces.BountyClaimed {
+	persisted := len(allClaimed)
+	checkpoint := func(lastBlock uint64) {
+		if len(allClaimed) > persisted {
+			writeDataPath(allClaimed)
+			persisted = len(allClaimed)
+		}
+		utils.WriteConfig(interfaces.Config{}, lastBlock, quest_config)
 	}
 
-	const maxBlockRange = 499
-	bountiesClaimed := make([]interfaces.BountyClaimed, 0)
+	from := resolveFromBlock(quest_config, config, 14784920)
 
-	for start := from + 1; start <= currentBlock; start += maxBlockRange + 1 {
-		end := min(start+maxBlockRange, currentBlock)
-
-		query := ethereum.FilterQuery{
-			FromBlock: big.NewInt(int64(start)),
-			ToBlock:   big.NewInt(int64(end)),
-			Addresses: QUEST_ADDRESSES,
-			Topics:    [][]common.Hash{{common.HexToHash("0x9a5376f7dcf8631c2b6249c9bec3d715cb97bdd4c82d92e55d147f6b4eea4197")}},
-		}
-
-		logs, err := client.FilterLogs(context.Background(), query)
-		if err != nil {
-			fmt.Println("fetchQuest logs error:", err)
-			continue
-		}
-
+	scanLogs(client, "quest", from+1, currentBlock, QUEST_ADDRESSES, common.HexToHash("0x9a5376f7dcf8631c2b6249c9bec3d715cb97bdd4c82d92e55d147f6b4eea4197"), func(logs []types.Log) {
 		for _, vLog := range logs {
 			questContract, err := questDistributor.NewQuestDistributor(vLog.Address, client)
 			if err != nil {
@@ -598,42 +541,32 @@ func fetchQuest(client *ethclient.Client, curvePools []interfaces.CurvePool, cur
 				continue
 			}
 
-			bountiesClaimed = addClaim(client, curvePools, bountiesClaimed, vLog.Address, event.RewardToken, event.RewardToken, vLog.BlockNumber, 0, event.Amount, vLog.TxHash, "ethereum", "")
+			allClaimed = addClaim(client, curvePools, allClaimed, vLog.Address, event.RewardToken, event.RewardToken, vLog.BlockNumber, 0, event.Amount, vLog.TxHash, "ethereum", "")
 		}
-	}
+	}, checkpoint)
 
-	return bountiesClaimed
+	checkpoint(currentBlock)
+
+	return allClaimed
 }
-func fetchYBribe(client *ethclient.Client, curvePools []interfaces.CurvePool, currentBlock uint64, config interfaces.Config, alchemyRpcUrl string) []interfaces.BountyClaimed {
+func fetchYBribe(client *ethclient.Client, curvePools []interfaces.CurvePool, currentBlock uint64, config interfaces.Config, alchemyRpcUrl string, allClaimed []interfaces.BountyClaimed) []interfaces.BountyClaimed {
 	client2, err := ethclient.Dial(alchemyRpcUrl)
 	if err != nil {
 		panic(err)
 	}
 
-	from := config.LastBlock
-	if from == 0 {
-		from = 15878261
+	persisted := len(allClaimed)
+	checkpoint := func(lastBlock uint64) {
+		if len(allClaimed) > persisted {
+			writeDataPath(allClaimed)
+			persisted = len(allClaimed)
+		}
+		utils.WriteConfig(interfaces.Config{}, lastBlock, ybribe_config)
 	}
 
-	const maxBlockRange = 499
-	bountiesClaimed := make([]interfaces.BountyClaimed, 0)
+	from := resolveFromBlock(ybribe_config, config, 15878261)
 
-	for start := from + 1; start <= currentBlock; start += maxBlockRange + 1 {
-		end := min(start+maxBlockRange, currentBlock)
-
-		query := ethereum.FilterQuery{
-			FromBlock: big.NewInt(int64(start)),
-			ToBlock:   big.NewInt(int64(end)),
-			Addresses: YBRIBE_ADDRESSES,
-			Topics:    [][]common.Hash{{common.HexToHash("0x2422cac5e23c46c890fdcf42d0c64757409df6832174df639337558f09d99c68")}},
-		}
-
-		logs, err := client.FilterLogs(context.Background(), query)
-		if err != nil {
-			fmt.Println("fetchYBribe logs error:", err)
-			continue
-		}
-
+	scanLogs(client, "ybribe", from+1, currentBlock, YBRIBE_ADDRESSES, common.HexToHash("0x2422cac5e23c46c890fdcf42d0c64757409df6832174df639337558f09d99c68"), func(logs []types.Log) {
 		for _, vLog := range logs {
 			ybribeContract, err := yBribeV3.NewYBribeV3(vLog.Address, client)
 			if err != nil {
@@ -680,11 +613,13 @@ func fetchYBribe(client *ethclient.Client, curvePools []interfaces.CurvePool, cu
 				continue
 			}
 
-			bountiesClaimed = addClaim(client, curvePools, bountiesClaimed, vLog.Address, event.RewardToken, event.RewardToken, vLog.BlockNumber, 0, event.Amount, vLog.TxHash, "ethereum", "")
+			allClaimed = addClaim(client, curvePools, allClaimed, vLog.Address, event.RewardToken, event.RewardToken, vLog.BlockNumber, 0, event.Amount, vLog.TxHash, "ethereum", "")
 		}
-	}
+	}, checkpoint)
 
-	return bountiesClaimed
+	checkpoint(currentBlock)
+
+	return allClaimed
 }
 
 func fetchBribeCrvFinance(client *ethclient.Client, curvePools []interfaces.CurvePool, currentBlock uint64, config interfaces.Config, alchemyRpcUrl string) []interfaces.BountyClaimed {
@@ -774,6 +709,85 @@ func fetchBribeCrvFinance(client *ethclient.Client, curvePools []interfaces.Curv
 	}
 
 	return bountiesClaimed
+}
+
+// scanLogs scans [from, to] with an adaptive block range: it starts at
+// maxLogsBlockRange, halves the range when the RPC rejects a query, grows it back
+// after consecutive successes, and skips a minimal chunk that keeps failing.
+// handleLogs is called with the logs of each fetched chunk. checkpoint (if not nil)
+// is called every checkpointChunkInterval chunks with the last scanned block, so
+// progress can be persisted along the way.
+func scanLogs(client *ethclient.Client, label string, from uint64, to uint64, addresses []common.Address, topic common.Hash, handleLogs func(logs []types.Log), checkpoint func(lastBlock uint64)) {
+	chunkSize := uint64(maxLogsBlockRange)
+	retries := 0
+	successes := 0
+	chunksSinceCheckpoint := 0
+
+	for start := from; start <= to; {
+		end := min(start+chunkSize-1, to)
+
+		query := ethereum.FilterQuery{
+			FromBlock: big.NewInt(int64(start)),
+			ToBlock:   big.NewInt(int64(end)),
+			Addresses: addresses,
+			Topics:    [][]common.Hash{{topic}},
+		}
+
+		logs, err := client.FilterLogs(context.Background(), query)
+		if err != nil {
+			successes = 0
+
+			// Range probably too large for the RPC: halve it and retry the same start
+			if chunkSize > minLogsBlockRange {
+				chunkSize = max(chunkSize/2, minLogsBlockRange)
+				continue
+			}
+
+			// Minimal range: retry a few times then skip the chunk
+			if retries < 3 {
+				retries++
+				time.Sleep(time.Duration(retries) * time.Second)
+				continue
+			}
+
+			log.Println(label, ": skipping blocks", start, "-", end, ":", err)
+			retries = 0
+			start = end + 1
+			continue
+		}
+
+		retries = 0
+		successes++
+		if successes >= 5 && chunkSize < maxLogsBlockRange {
+			chunkSize = min(chunkSize*2, maxLogsBlockRange)
+			successes = 0
+		}
+
+		handleLogs(logs)
+		start = end + 1
+
+		chunksSinceCheckpoint++
+		if checkpoint != nil && chunksSinceCheckpoint >= checkpointChunkInterval && start <= to {
+			checkpoint(end)
+			chunksSinceCheckpoint = 0
+			log.Println(label, ": scanned up to block", end, ",", to-end, "blocks remaining")
+		}
+	}
+}
+
+// resolveFromBlock returns the block to resume a source from: its own config if
+// present, otherwise the legacy global bounties config, otherwise the deploy block.
+func resolveFromBlock(configPath string, globalConfig interfaces.Config, deployBlock uint64) uint64 {
+	config := utils.ReadConfig(configPath)
+	if config.LastBlock > 0 {
+		return config.LastBlock
+	}
+
+	if globalConfig.LastBlock > 0 {
+		return globalConfig.LastBlock
+	}
+
+	return deployBlock
 }
 
 const blockTimestampRetries = 3
