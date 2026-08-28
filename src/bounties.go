@@ -776,6 +776,50 @@ func fetchBribeCrvFinance(client *ethclient.Client, curvePools []interfaces.Curv
 	return bountiesClaimed
 }
 
+const blockTimestampRetries = 3
+const ethBlockTimeSec = 12
+
+// getBlockTimestamp fetches the timestamp of a block, retrying on transient RPC errors.
+// On L2, #BlockByNumber always fails: the fallback timestamp is used right away when provided.
+// If all retries fail without a fallback, the timestamp is approximated from the latest
+// block assuming a 12s block time (mainnet only).
+func getBlockTimestamp(client *ethclient.Client, blockNumber uint64, fallbackTimestamp uint64) (uint64, error) {
+	var lastErr error
+	for attempt := 1; attempt <= blockTimestampRetries; attempt++ {
+		block, err := client.BlockByNumber(context.Background(), big.NewInt(int64(blockNumber)))
+		if err == nil {
+			return block.Time(), nil
+		}
+		lastErr = err
+
+		if fallbackTimestamp > 0 {
+			return fallbackTimestamp, nil
+		}
+
+		time.Sleep(time.Duration(attempt) * time.Second)
+	}
+
+	fmt.Println("BlockByNumber failed after retries, approximating timestamp for block", blockNumber, ":", lastErr)
+
+	for attempt := 1; attempt <= blockTimestampRetries; attempt++ {
+		latest, err := client.HeaderByNumber(context.Background(), nil)
+		if err != nil {
+			lastErr = err
+			time.Sleep(time.Duration(attempt) * time.Second)
+			continue
+		}
+
+		latestNumber := latest.Number.Uint64()
+		if blockNumber >= latestNumber {
+			return latest.Time, nil
+		}
+
+		return latest.Time - (latestNumber-blockNumber)*ethBlockTimeSec, nil
+	}
+
+	return 0, lastErr
+}
+
 func addClaim(client *ethclient.Client, curvePools []interfaces.CurvePool, bountiesClaimed []interfaces.BountyClaimed, contract common.Address, rewardToken common.Address, rewardTokenForDecimals common.Address, blockNumber uint64, blockTimestamp uint64, amount *big.Int, txHash common.Hash, tokenRewardChain string, comment string) []interfaces.BountyClaimed {
 	decimals, err := utils.GetTokenDecimals(client, tokenRewardChain, rewardTokenForDecimals)
 	if err != nil {
@@ -783,19 +827,9 @@ func addClaim(client *ethclient.Client, curvePools []interfaces.CurvePool, bount
 		return bountiesClaimed
 	}
 
-	// On L2, we can't use #BlockByNumber
-	// Try to fetch it and if we got an error, use the default timestamp in parameter
-	// If the defaut param is set to 0, panic
-	timestamp := uint64(0)
-	block, err := client.BlockByNumber(context.Background(), big.NewInt(int64(blockNumber)))
+	timestamp, err := getBlockTimestamp(client, blockNumber, blockTimestamp)
 	if err != nil {
-		if blockTimestamp > 0 {
-			timestamp = blockTimestamp
-		} else {
-			panic(err)
-		}
-	} else {
-		timestamp = block.Time()
+		panic(err)
 	}
 
 	price := utils.GetHistoricalPriceTokenPrice(rewardToken, tokenRewardChain, timestamp)
@@ -820,12 +854,11 @@ func addVotiumClaim(client *ethclient.Client, bountiesClaimed []interfaces.Bount
 		return bountiesClaimed
 	}
 
-	block, err := client.BlockByNumber(context.Background(), big.NewInt(int64(blockNumber)))
+	timestamp, err := getBlockTimestamp(client, blockNumber, 0)
 	if err != nil {
 		panic(err)
 	}
 
-	timestamp := block.Time()
 	historicalPrice := utils.GetHistoricalPriceTokenPrice(rewardToken, "ethereum", timestamp)
 
 	nextTimestamp := timestamp + utils.WEEK_TO_SEC
