@@ -33,7 +33,30 @@ func Pegs(client *ethclient.Client) {
 	}
 
 	blockTimestamp := block.Time()
-	startDay := uint64(utils.GetStartOfDay(blockTimestamp))
+	currentDay := uint64(utils.GetStartOfDay(blockTimestamp))
+
+	// Backfill missing days since the last timestamp in the file
+	lastDay := currentDay
+	if len(pegs) > 0 {
+		lastDay = pegs[0].Timestamp
+		for _, peg := range pegs {
+			if peg.Timestamp > lastDay {
+				lastDay = peg.Timestamp
+			}
+		}
+	}
+
+	for day := lastDay + utils.DAY_TO_SEC; day < currentDay; day += utils.DAY_TO_SEC {
+		blockNumber := utils.GetBlockNumberByTimestamp("ethereum", day)
+		pegs = fetchPegsAtBlock(client, pegs, day, big.NewInt(int64(blockNumber)))
+	}
+
+	pegs = fetchPegsAtBlock(client, pegs, currentDay, block.Number())
+
+	writeDailyPegs(pegs)
+}
+
+func fetchPegsAtBlock(client *ethclient.Client, pegs []interfaces.Peg, day uint64, blockNumber *big.Int) []interfaces.Peg {
 
 	for _, wrapper := range utils.WRAPPERS {
 
@@ -43,7 +66,7 @@ func Pegs(client *ethclient.Client) {
 		}
 
 		opts := new(bind.CallOpts)
-		opts.BlockNumber = block.Number()
+		opts.BlockNumber = blockNumber
 
 		pegBN, err := poolContract.GetDy(opts, big.NewInt(1), big.NewInt(0), utils.Mul(10000, 18))
 		if err != nil {
@@ -54,7 +77,7 @@ func Pegs(client *ethclient.Client) {
 
 		found := false
 		for i := 0; i < len(pegs); i++ {
-			if pegs[i].Timestamp == startDay && pegs[i].PoolAddress == wrapper.PoolAddress {
+			if pegs[i].Timestamp == day && pegs[i].PoolAddress == wrapper.PoolAddress {
 				pegs[i].Peg = peg
 				found = true
 				break
@@ -63,14 +86,14 @@ func Pegs(client *ethclient.Client) {
 
 		if !found {
 			pegs = append(pegs, interfaces.Peg{
-				Timestamp:   startDay,
+				Timestamp:   day,
 				PoolAddress: wrapper.PoolAddress,
 				Peg:         peg,
 			})
 		}
 	}
 
-	writeDailyPegs(pegs)
+	return pegs
 }
 
 func PegsHistorical(client *ethclient.Client) {
