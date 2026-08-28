@@ -36,12 +36,12 @@ jobs:
       
       - name: Run all scripts
         run: |
+          go run ./main.go peg
           go run ./main.go bounties
           go run ./main.go crvusd ALCHEMY_APIKEY_3
           go run ./main.go locks
           go run ./main.go weeklyFees
           go run ./main.go pegkeepers ALCHEMY_APIKEY_3
-          go run ./main.go peg
           go run ./main.go votes
           go run ./main.go wrappersSwaps
           go run ./main.go claimWeeklyFees
