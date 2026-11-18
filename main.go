@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"main/internal/dutchfees"
 	"main/src"
 	"main/src/scrvusd"
 	"main/utils"
@@ -23,6 +24,13 @@ func main() {
 	}
 
 	functionToExecute := argsWithoutProg[0]
+
+	if functionToExecute == "weeklyPendingFees" {
+		if err := dutchfees.Run(context.Background(), argsWithoutProg[1:], os.Stdout, os.Stderr, src.LegacyPendingFees); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 
 	ALCHEMY_RPC_URL = utils.GetPublicRpcUrl("mainnet")
 
@@ -59,7 +67,9 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		src.PendingPoolFees(clientDrpc, lastestBlock.NumberU64(), lastestBlock.Time())
+		if err := src.PendingPoolFees(clientDrpc, lastestBlock.NumberU64(), lastestBlock.Time()); err != nil {
+			log.Fatal(err)
+		}
 	case "inflation":
 		src.Inflation(client, lastestBlock.NumberU64(), lastestBlock.Time())
 	case "llamalend":
