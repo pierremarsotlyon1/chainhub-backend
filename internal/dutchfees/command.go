@@ -24,6 +24,8 @@ type LegacyEstimator func(context.Context, string, *ethclient.Client, []interfac
 
 type options struct {
 	forDistribution bool
+	ethereumBlock   uint64
+	poolCatalog     []interfaces.CurvePool
 	legacy          LegacyEstimator
 	chain, pools    string
 	poolLimit       int
@@ -79,7 +81,12 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, legacy Le
 
 func collectChains(ctx context.Context, chains []chainConfig, o options) (report, error) {
 	group, ctx := errgroup.WithContext(ctx)
-	catalog := sync.OnceValues(func() ([]interfaces.CurvePool, error) { return loadCatalog(ctx) })
+	catalog := sync.OnceValues(func() ([]interfaces.CurvePool, error) {
+		if o.poolCatalog != nil {
+			return o.poolCatalog, nil
+		}
+		return loadCatalog(ctx)
+	})
 	out := report{Chains: make([]chainReport, len(chains))}
 	for i, cfg := range chains {
 		group.Go(func() error {
@@ -137,7 +144,11 @@ func readChain(ctx context.Context, cfg chainConfig, o options, catalog func() (
 		return out, err
 	}
 	defer r.client.Close()
-	head, err := r.head(ctx)
+	tag := "latest"
+	if cfg.ID == 1 && o.ethereumBlock != 0 {
+		tag = fmt.Sprintf("0x%x", o.ethereumBlock)
+	}
+	head, err := r.header(ctx, tag)
 	if err != nil {
 		return out, err
 	}
@@ -151,6 +162,20 @@ func readChain(ctx context.Context, cfg chainConfig, o options, catalog func() (
 		out.Status = "legacy"
 		if cfg.ID == 8453 {
 			out.Status = "outside_legacy_coverage"
+		}
+		if o.forDistribution && cfg.ID == 1 {
+			p, err := readProtocol(ctx, r, cfg, head)
+			if err != nil {
+				return out, err
+			}
+			pools, err := catalog()
+			if err != nil {
+				return out, err
+			}
+			out.dashboard, err = readDashboardReceipts(ctx, r, cfg, head, p, catalogForChain(pools, cfg.Name))
+			if err != nil {
+				return out, err
+			}
 		}
 		if o.legacy != nil {
 			if o.flows {
@@ -285,6 +310,13 @@ func readChain(ctx context.Context, cfg chainConfig, o options, catalog func() (
 	}
 	estimate := makePending(cfg, p, stock, out.Pools, tokens[p.Target].PriceUSD)
 	out.Pending = &estimate
+	if o.forDistribution && cfg.ID == 1 {
+		out.dashboard, err = readDashboardReceipts(ctx, r, cfg, head, p, prices)
+		if err != nil {
+			return out, err
+		}
+		out.dashboard.beforeBuffer = estimate.beforeBuffer
+	}
 	if out.StageSource == "catalogContractReads" {
 		out.Pending.Partial = true
 	}
@@ -326,7 +358,7 @@ func readWeekFlows(ctx context.Context, r *reader, cfg chainConfig, head snapsho
 	if err != nil {
 		return flows{}, nil, err
 	}
-	ledger, staged, err := weeklyFlows(ctx, r, cfg, from, head.Number, p.Target, p.Hooker)
+	ledger, staged, err := weeklyFlows(ctx, r, cfg, from, head, p)
 	if err != nil {
 		return flows{}, nil, fmt.Errorf("weekly event history (check %s_RPC_URL): %w", strings.ToUpper(cfg.Name), err)
 	}

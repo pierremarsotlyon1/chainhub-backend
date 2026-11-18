@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"io"
 	"log"
+	"maps"
 
 	"main/contracts/curvePoolUtils"
 	"main/contracts/curvePoolWithOwner"
@@ -133,21 +134,21 @@ var FEE_COLLECTOR_PER_CHAIN_COWSWAP_BURNER = map[string]common.Address{
 // PendingPoolFees publishes one distribution estimate per network using its installed burner.
 func PendingPoolFees(client *ethclient.Client, currentBlockf uint64, currentBlockTImestamp uint64) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	migrated, err := dutchfees.MigratedDistributionFees(ctx)
-	cancel()
-	if err != nil {
-		return err
-	}
-	current := readPending3CRVFees()
+	defer cancel()
 	pools, err := utils.GetAllCurvePools()
 	if err != nil {
 		return err
 	}
+	distribution, err := dutchfees.MigratedDistributionFees(ctx, currentBlockf, pools)
+	if err != nil {
+		return err
+	}
 	earned := make(map[string]float64)
-	for chain, value := range migrated {
+	missingNetwork := false
+	for chain, value := range distribution.Migrated {
 		earned[chain] = value
 		if chain == ETHEREUM_CHAIN {
-			// The frontend adds uncollected controller fees to this key.
+			// Compatibility field for clients consuming the historical payload.
 			earned["crvusd"] = 0
 		}
 	}
@@ -156,14 +157,16 @@ func PendingPoolFees(client *ethclient.Client, currentBlockf uint64, currentBloc
 			continue
 		}
 		var chainClient *ethclient.Client
+		var block *big.Int
 		if chain == ETHEREUM_CHAIN {
-			chainClient = client
+			chainClient, block = client, new(big.Int).SetUint64(currentBlockf)
 		}
-		values, err := LegacyPendingFees(context.Background(), chain, chainClient, pools, true)
+		values, err := LegacyPendingFeesAt(context.Background(), chain, chainClient, pools, true, block)
 		if err != nil {
 			if chain == ETHEREUM_CHAIN || chain == ARBITRUM_CHAIN {
 				return fmt.Errorf("legacy fees for %s: %w", chain, err)
 			}
+			missingNetwork = true
 			fmt.Fprintf(os.Stderr, "omitting unavailable legacy fees for %s\n", chain)
 			continue
 		}
@@ -171,19 +174,62 @@ func PendingPoolFees(client *ethclient.Client, currentBlockf uint64, currentBloc
 			earned[key] = value
 		}
 	}
-	lastTime, lastAmount := fetchLastDistribution(client, currentBlockf, current.LastBlock, current.LastDistributionTimestamp, current.LastDistributionAmount)
+	distributionCtx, stopDistribution := context.WithTimeout(context.Background(), 5*time.Minute)
+	lastTime, lastAmount, err := fetchLastDistribution(distributionCtx, client, currentBlockf)
+	stopDistribution()
+	if err != nil {
+		return fmt.Errorf("last veCRV distribution: %w", err)
+	}
 	checkCtx, stop := context.WithTimeout(context.Background(), 30*time.Second)
 	defer stop()
-	if err := dutchfees.CheckMigration(checkCtx, migrated); err != nil {
+	canonical, err := client.HeaderByNumber(checkCtx, new(big.Int).SetUint64(currentBlockf))
+	if err != nil {
 		return err
 	}
-	writePending3CRVFees(interfaces.PendingPoolFees{LastBlock: currentBlockf, LastDistributionTimestamp: lastTime, LastDistributionAmount: lastAmount, Pending3CRVFees: earned})
-	return nil
+	if canonical.Hash() != distribution.EthereumBlockHash {
+		return fmt.Errorf("Ethereum block %d changed during fee calculation", currentBlockf)
+	}
+	if err := dutchfees.CheckMigration(checkCtx, distribution.Migrated); err != nil {
+		return err
+	}
+	dashboardAmounts, missingPrice := legacyDashboardUSD(pools, earned, distribution.Migrated)
+	return writePending3CRVFees(interfaces.PendingPoolFees{LastBlock: currentBlockf, LastDistributionTimestamp: lastTime, LastDistributionAmount: lastAmount, Pending3CRVFees: earned, VeCrvFees: distribution.Dashboard(dashboardAmounts, missingNetwork || missingPrice)})
+}
+
+// Preserve the original token amounts in pending3CRVFees. Only the dashboard
+// values legacy simulations in USD. Migrated entries are already in USD.
+func legacyDashboardUSD(pools []interfaces.CurvePool, earned, migrated map[string]float64) (map[string]float64, bool) {
+	values := maps.Clone(earned)
+	missingPrice := false
+	for chain, target := range TARGET_TOKEN {
+		amount, exists := earned[chain]
+		_, installed := migrated[chain]
+		if !exists || installed || chain == ETHEREUM_CHAIN {
+			continue
+		}
+		usd, ok := dutchfees.LegacyTargetUSD(pools, chain, target, amount)
+		if !ok {
+			delete(values, chain)
+			missingPrice = true
+			continue
+		}
+		values[chain] = usd
+	}
+	return values, missingPrice
 }
 
 // LegacyPendingFees runs the historical estimator on the requested chain.
 // updateCaches controls persistence of discovered pool and burner metadata.
 func LegacyPendingFees(ctx context.Context, chain string, client *ethclient.Client, pools []interfaces.CurvePool, updateCaches bool) (map[string]float64, error) {
+	return LegacyPendingFeesAt(ctx, chain, client, pools, updateCaches, nil)
+}
+
+// LegacyPendingFeesAt caps Ethereum's historical reads at block. A nil block
+// selects the current head. Simulation-based legacy chains require a nil block.
+func LegacyPendingFeesAt(ctx context.Context, chain string, client *ethclient.Client, pools []interfaces.CurvePool, updateCaches bool, block *big.Int) (map[string]float64, error) {
+	if block != nil && (!block.IsUint64() || !utils.ArrayContains(COWSWAP_BURNER_CHAINS, chain)) {
+		return nil, fmt.Errorf("unsupported legacy block %v for %s", block, chain)
+	}
 	if !utils.ArrayContains(CHAINS_APPROVED, chain) {
 		return nil, fmt.Errorf("no legacy estimator for %s", chain)
 	}
@@ -218,7 +264,7 @@ func LegacyPendingFees(ctx context.Context, chain string, client *ethclient.Clie
 	earned := make(map[string]float64)
 	var err error
 	if utils.ArrayContains(COWSWAP_BURNER_CHAINS, chain) {
-		err = estimatedWithCowswapBurner(ctx, earned, client, chainPools, chain, updateCaches)
+		err = estimatedWithCowswapBurner(ctx, earned, client, chainPools, chain, updateCaches, block)
 	} else {
 		err = estimatedWithSimulation(ctx, earned, client, chainPools, chain, updateCaches)
 	}
@@ -328,7 +374,34 @@ func legacyMulticall(ctx context.Context, client *ethclient.Client, calls []mult
 	return responses, nil
 }
 
-func estimatedWithCowswapBurner(ctx context.Context, earned map[string]float64, client *ethclient.Client, allPools []interfaces.CurvePool, chain string, updateCaches bool) error {
+type legacySplitterReceipts struct {
+	total, throughCollect big.Int
+}
+
+func (r *legacySplitterReceipts) add(block, collectBlock uint64, amount *big.Int) {
+	r.total.Add(&r.total, amount)
+	if block <= collectBlock {
+		r.throughCollect.Add(&r.throughCollect, amount)
+	}
+}
+
+// Only subtract receipts already observable in the historical collector balance.
+func (r *legacySplitterReceipts) otherCashAtCollect(balance *big.Int) *big.Int {
+	if balance.Cmp(&r.throughCollect) <= 0 {
+		return new(big.Int)
+	}
+	return new(big.Int).Sub(balance, &r.throughCollect)
+}
+
+// legacyCutoffBlock reuses the observed height at or after its timestamp.
+func legacyCutoffBlock(chain string, cutoff, headTime, headNumber uint64, lookup func(string, uint64) uint64) uint64 {
+	if cutoff >= headTime {
+		return headNumber
+	}
+	return min(lookup(chain, cutoff), headNumber)
+}
+
+func estimatedWithCowswapBurner(ctx context.Context, earned map[string]float64, client *ethclient.Client, allPools []interfaces.CurvePool, chain string, updateCaches bool, block *big.Int) error {
 	feeCollectorAddress, exists := FEE_COLLECTOR_PER_CHAIN_COWSWAP_BURNER[chain]
 	if !exists {
 		return fmt.Errorf("no legacy fee collector for %s", chain)
@@ -340,49 +413,49 @@ func estimatedWithCowswapBurner(ctx context.Context, earned map[string]float64, 
 		return err
 	}
 
-	burner, err := feeCollectorContract.Burner(&bind.CallOpts{Context: ctx})
+	head, err := client.HeaderByNumber(ctx, block)
+	if err != nil {
+		return err
+	}
+	if head.Number == nil || !head.Number.IsUint64() || (block != nil && head.Number.Cmp(block) != 0) {
+		return errors.New("legacy RPC returned an unexpected block height")
+	}
+	opts := &bind.CallOpts{Context: ctx, BlockNumber: head.Number}
+	burner, err := feeCollectorContract.Burner(opts)
 	if err != nil {
 		return err
 	}
 
 	// Get collect end timestamp
-	_, endCollectTimeframe, err := feeCollectorContract.EpochTimeFrame(&bind.CallOpts{Context: ctx}, big.NewInt(2))
+	_, endCollectTimeframe, err := feeCollectorContract.EpochTimeFrame(opts, big.NewInt(2))
 	if err != nil {
 		return err
 	}
 
 	// Get forward end timestamp
-	_, endForwardTimeframe, err := feeCollectorContract.EpochTimeFrame(&bind.CallOpts{Context: ctx}, big.NewInt(8))
+	_, endForwardTimeframe, err := feeCollectorContract.EpochTimeFrame(opts, big.NewInt(8))
 	if err != nil {
 		return err
 	}
 
-	// Current block
-	currentBlock, err := client.BlockByNumber(ctx, nil)
-	if err != nil {
-		return err
-	}
-
-	// Get the block number we will use to query
-	collectBlockTimestamp := currentBlock.Time()
-	if collectBlockTimestamp > endCollectTimeframe.Uint64() {
-		collectBlockTimestamp = endCollectTimeframe.Uint64()
-	}
-
-	collectBlockNumber := utils.GetBlockNumberByTimestamp(chain, collectBlockTimestamp)
+	collectBlockTimestamp := min(head.Time, endCollectTimeframe.Uint64())
+	collectBlockNumber := legacyCutoffBlock(chain, collectBlockTimestamp, head.Time, head.Number.Uint64(), utils.GetBlockNumberByTimestamp)
 	if collectBlockNumber == 0 {
 		return errors.New("missing legacy collect block")
 	}
 
-	forwardBlockNumber := utils.GetBlockNumberByTimestamp(chain, endForwardTimeframe.Uint64()-utils.WEEK_TO_SEC)
+	if !endForwardTimeframe.IsUint64() || endForwardTimeframe.Uint64() < utils.WEEK_TO_SEC {
+		return errors.New("invalid legacy forward time frame")
+	}
+	forwardBlockNumber := legacyCutoffBlock(chain, endForwardTimeframe.Uint64()-utils.WEEK_TO_SEC, head.Time, head.Number.Uint64(), utils.GetBlockNumberByTimestamp)
 	if forwardBlockNumber == 0 {
 		return errors.New("missing legacy forward block")
 	}
 
 	// Fetch collected fees events
-	crvUsdFeesCollected := 0.0
+	var receipts legacySplitterReceipts
 
-	err = utils.ForEachBlockRange(forwardBlockNumber, currentBlock.NumberU64(), 4_999, func(start uint64, end uint64) error {
+	err = utils.ForEachBlockRange(forwardBlockNumber, head.Number.Uint64(), 4_999, func(start uint64, end uint64) error {
 		query := ethereum.FilterQuery{
 			FromBlock: big.NewInt(int64(start)),
 			ToBlock:   big.NewInt(int64(end)),
@@ -410,7 +483,7 @@ func estimatedWithCowswapBurner(ctx context.Context, earned map[string]float64, 
 				fmt.Fprintln(os.Stderr, "ParseTransfer error:", err)
 				continue
 			}
-			crvUsdFeesCollected += utils.Quo(event.Value, 18)
+			receipts.add(vLog.BlockNumber, collectBlockNumber, event.Value)
 		}
 
 		return nil
@@ -471,7 +544,7 @@ func estimatedWithCowswapBurner(ctx context.Context, earned map[string]float64, 
 		}
 	}
 
-	multicallResponses, err := legacyMulticall(ctx, client, multicalls, MULTICALL_CHAIN[chain], big.NewInt(int64(collectBlockNumber)))
+	multicallResponses, err := legacyMulticall(ctx, client, multicalls, MULTICALL_CHAIN[chain], new(big.Int).SetUint64(collectBlockNumber))
 	if err != nil {
 		return err
 	}
@@ -491,11 +564,12 @@ func estimatedWithCowswapBurner(ctx context.Context, earned map[string]float64, 
 				continue
 			}
 
-			balance := utils.Quo(big.NewInt(0).SetBytes(multicallResponse.ReturnData), uint64(decimals))
-
-			if balanceOfAddress == feeCollectorAddress && common.HexToAddress(coin.Address) == utils.CRVUSD_ADDRESS {
-				balance -= crvUsdFeesCollected
+			rawBalance := new(big.Int).SetBytes(multicallResponse.ReturnData)
+			collectorCash := balanceOfAddress == feeCollectorAddress && common.HexToAddress(coin.Address) == utils.CRVUSD_ADDRESS
+			if collectorCash {
+				rawBalance = receipts.otherCashAtCollect(rawBalance)
 			}
+			balance := utils.Quo(rawBalance, uint64(decimals))
 
 			usdPrice := legacyUSDPrice(coin.UsdPrice)
 
@@ -505,8 +579,8 @@ func estimatedWithCowswapBurner(ctx context.Context, earned map[string]float64, 
 
 			amount := balance * usdPrice
 
-			// Not swap by Cowswap if total is under $500
-			if amount < 500 {
+			// Collector crvUSD needs no sale and has no CoW order minimum.
+			if !collectorCash && amount < 500 {
 				continue
 			}
 
@@ -530,7 +604,7 @@ func estimatedWithCowswapBurner(ctx context.Context, earned map[string]float64, 
 	}
 
 	multicalls = make([]multicall.Multicall3Call, 0)
-	poolsWithWithdrawAdminFee, poolsWithClaimAdminFee, err := getPoolsWithWithdrawAdminFee(ctx, client, allPools, chain, updateCaches)
+	poolsWithWithdrawAdminFee, poolsWithClaimAdminFee, err := getPoolsWithWithdrawAdminFee(ctx, client, allPools, chain, updateCaches, new(big.Int).SetUint64(collectBlockNumber))
 	if err != nil {
 		return err
 	}
@@ -587,7 +661,7 @@ func estimatedWithCowswapBurner(ctx context.Context, earned map[string]float64, 
 		})
 	}
 
-	feesInPoolResponses, err := legacyMulticall(ctx, client, multicalls, MULTICALL_CHAIN[chain], big.NewInt(int64(collectBlockNumber)))
+	feesInPoolResponses, err := legacyMulticall(ctx, client, multicalls, MULTICALL_CHAIN[chain], new(big.Int).SetUint64(collectBlockNumber))
 
 	if err != nil {
 		return err
@@ -696,7 +770,7 @@ func estimatedWithCowswapBurner(ctx context.Context, earned map[string]float64, 
 		writeMapTimestamp(timestamps, COWSWAP_FEES_TIMESTAMPS)
 	}
 	earned[chain] = totalFees
-	earned["crvusd"] = crvUsdFeesCollected
+	earned["crvusd"] = utils.Quo(&receipts.total, 18)
 
 	return nil
 }
@@ -713,7 +787,7 @@ func estimatedWithSimulation(ctx context.Context, earned map[string]float64, cli
 	}
 
 	// Generate calldatas for withdraw_many
-	poolsWithWithdrawAdminFee, _, err := getPoolsWithWithdrawAdminFee(ctx, clientChain, pools, chain, updateCaches)
+	poolsWithWithdrawAdminFee, _, err := getPoolsWithWithdrawAdminFee(ctx, clientChain, pools, chain, updateCaches, nil)
 	if err != nil {
 		return err
 	}
@@ -806,60 +880,7 @@ func estimatedWithSimulation(ctx context.Context, earned map[string]float64, cli
 	return nil
 }
 
-func fetchLastDistribution(client *ethclient.Client, currentBlock uint64, lastBlock uint64, lastTimestamp uint64, lastDistributionAmount uint64) (uint64, uint64) {
-	from := lastBlock
-	if from == 0 {
-		from = 19526061
-	}
-
-	feesDistributedTopic := crypto.Keccak256Hash([]byte("FeesDistributed(uint256,uint256)"))
-	timestamp := lastTimestamp
-
-	err := utils.ForEachBlockRange(from, currentBlock, 499, func(start uint64, end uint64) error {
-		query := ethereum.FilterQuery{
-			FromBlock: big.NewInt(int64(start)),
-			ToBlock:   big.NewInt(int64(end)),
-			Addresses: []common.Address{utils.FEE_ALLOCATOR},
-			Topics:    [][]common.Hash{{feesDistributedTopic}},
-		}
-
-		logs, err := client.FilterLogs(context.Background(), query)
-		if err != nil {
-			return fmt.Errorf("FilterLogs error: %w", err)
-		}
-
-		for _, vLog := range logs {
-			if len(vLog.Data) < 64 {
-				continue
-			}
-
-			totalAmount := new(big.Int).SetBytes(vLog.Data[:32])
-
-			block, err := client.BlockByNumber(context.Background(), big.NewInt(int64(vLog.BlockNumber)))
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "BlockByNumber error:", err)
-				continue
-			}
-
-			if block.Time()-timestamp > 2*utils.DAY_TO_SEC {
-				lastDistributionAmount = 0
-			}
-
-			timestamp = block.Time()
-			lastDistributionAmount += uint64(utils.Quo(totalAmount, 18))
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "fetchLastDistribution error:", err)
-	}
-
-	return timestamp, lastDistributionAmount
-}
-
-func getPoolsWithWithdrawAdminFee(ctx context.Context, client *ethclient.Client, pools []interfaces.CurvePool, chain string, updateCaches bool) ([]common.Address, []common.Address, error) {
+func getPoolsWithWithdrawAdminFee(ctx context.Context, client *ethclient.Client, pools []interfaces.CurvePool, chain string, updateCaches bool, block *big.Int) ([]common.Address, []common.Address, error) {
 
 	poolWithWithdrawAdminFee, err := readLegacyMap[string, map[common.Address]bool](ctx, POOL_WITH_WITHDRAW_ADMIN_FEES_DATA, updateCaches)
 	if err != nil {
@@ -905,7 +926,7 @@ func getPoolsWithWithdrawAdminFee(ctx context.Context, client *ethclient.Client,
 			}
 
 			if !haveIt {
-				bytecode, err := client.CodeAt(ctx, poolAddress, nil) // nil pour le dernier bloc connu
+				bytecode, err := client.CodeAt(ctx, poolAddress, block)
 				if err != nil {
 					fmt.Fprintln(os.Stderr, err)
 				} else {
@@ -937,7 +958,7 @@ func getPoolsWithWithdrawAdminFee(ctx context.Context, client *ethclient.Client,
 			}
 
 			if !haveIt {
-				bytecode, err := client.CodeAt(ctx, poolAddress, nil) // nil pour le dernier bloc connu
+				bytecode, err := client.CodeAt(ctx, poolAddress, block)
 				if err != nil {
 					fmt.Fprintln(os.Stderr, err)
 				} else {
@@ -1630,50 +1651,15 @@ func writeMapFees(pools map[string]float64, path string) {
 	}
 }
 
-func readPending3CRVFees() interfaces.PendingPoolFees {
-	pendingPoolFees := new(interfaces.PendingPoolFees)
-	b, err := utils.ReadBucketFile(PENDING_POOL_FEES_DATA[2:])
-	if err == nil && len(b) > 0 {
-		if err := json.Unmarshal(b, &pendingPoolFees); err != nil {
-			log.Fatal(err)
-		}
-
-		return *pendingPoolFees
-	}
-
-	if !utils.FileExists(PENDING_POOL_FEES_DATA) {
-		return interfaces.PendingPoolFees{
-			LastBlock:                 0,
-			LastDistributionTimestamp: 0,
-			LastDistributionAmount:    0,
-		}
-	}
-
-	file, err := os.ReadFile(PENDING_POOL_FEES_DATA)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if err := json.Unmarshal([]byte(file), &pendingPoolFees); err != nil {
-		log.Fatal(err)
-	}
-
-	return *pendingPoolFees
-}
-
-func writePending3CRVFees(data interfaces.PendingPoolFees) {
+func writePending3CRVFees(data interfaces.PendingPoolFees) error {
 	file, err := json.Marshal(data)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
-
 	if err := os.WriteFile(PENDING_POOL_FEES_DATA, file, 0644); err != nil {
-		log.Fatal(err)
+		return err
 	}
-
-	if err := utils.WriteBucketFile(PENDING_POOL_FEES_DATA[2:], data); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-	}
+	return utils.WriteBucketFile(PENDING_POOL_FEES_DATA[2:], data)
 }
 
 func writeMapTimestamp(timestamps map[string]uint64, path string) {

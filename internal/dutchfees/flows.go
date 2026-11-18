@@ -38,7 +38,7 @@ var (
 func flowTopic(signature string) common.Hash { return crypto.Keccak256Hash([]byte(signature)) }
 func flowWord(data []byte, i int) *big.Int   { return new(big.Int).SetBytes(data[i*32 : (i+1)*32]) }
 
-func weeklyFlows(ctx context.Context, r *reader, cfg chainConfig, from, to uint64, target, hooker common.Address) (flows, map[common.Address]*big.Int, error) {
+func weeklyFlows(ctx context.Context, r *reader, cfg chainConfig, from uint64, head snapshot, p protocol) (flows, map[common.Address]*big.Int, error) {
 	addresses := []common.Address{cfg.Burner}
 	signatures := []common.Hash{lotStagedEvent, nativeTakenEvent}
 	if cfg.Allocator != (common.Address{}) {
@@ -49,33 +49,40 @@ func weeklyFlows(ctx context.Context, r *reader, cfg chainConfig, from, to uint6
 		addresses = append(addresses, cfg.Bridger)
 		signatures = append(signatures, bridgeInitiatedEvent)
 	}
-	protocolLogs, err := flowLogs(ctx, r.client, ethereum.FilterQuery{Addresses: addresses, Topics: [][]common.Hash{signatures}}, from, to)
+	protocolLogs, err := flowLogs(ctx, r.client, ethereum.FilterQuery{Addresses: addresses, Topics: [][]common.Hash{signatures}}, from, head.Number)
 	if err != nil {
 		return flows{}, nil, err
 	}
-	// CoW can settle only a lot staged by this burner in this epoch.
-	// Installation at the snapshot alone cannot rule out an earlier trade.
-	first := to
-	hasLot := false
-	for _, l := range protocolLogs {
-		if l.Address == cfg.Burner && len(l.Topics) > 0 && l.Topics[0] == lotStagedEvent {
-			if l.BlockNumber < from || l.BlockNumber > to {
-				return flows{}, nil, fmt.Errorf("out-of-range LotStaged block %d", l.BlockNumber)
-			}
-			hasLot = true
-			if l.BlockNumber < first {
-				first = l.BlockNumber
-			}
-		}
+	cowLogs, err := exchangeCowLogs(ctx, r, cfg, head, p)
+	if err != nil {
+		return flows{}, nil, err
 	}
-	if hasLot {
-		cowLogs, err := flowLogs(ctx, r.client, ethereum.FilterQuery{Addresses: []common.Address{cowSettlement}, Topics: [][]common.Hash{{cowTradeEvent}, {common.BytesToHash(cfg.Burner.Bytes())}}}, first, to)
-		if err != nil {
-			return flows{}, nil, err
-		}
-		protocolLogs = append(protocolLogs, cowLogs...)
+	return summarizeFlowLogs(cfg, p.Target, p.Hooker, append(protocolLogs, cowLogs...))
+}
+
+// Both burners require FeeCollector.can_exchange at settlement. A trade's
+// indexed owner identifies the burner even when its receiver is the collector.
+func exchangeCowLogs(ctx context.Context, r *reader, cfg chainConfig, head snapshot, p protocol) ([]types.Log, error) {
+	if head.Timestamp < p.CollectEnd {
+		return nil, nil
 	}
-	return summarizeFlowLogs(cfg, target, hooker, protocolLogs)
+	from, err := r.blockAtStart(ctx, head, p.CollectEnd, cfg)
+	if err != nil {
+		return nil, err
+	}
+	to := head.Number
+	if head.Timestamp >= p.ExchangeEnd {
+		after, err := r.blockAtStart(ctx, head, p.ExchangeEnd, cfg)
+		if err != nil || after <= from {
+			return nil, err
+		}
+		to = after - 1
+	}
+	owners := []common.Hash{common.BytesToHash(cfg.LegacyBurner.Bytes()), common.BytesToHash(cfg.Burner.Bytes())}
+	return flowLogs(ctx, r.client, ethereum.FilterQuery{
+		Addresses: []common.Address{cowSettlement},
+		Topics:    [][]common.Hash{{cowTradeEvent}, owners},
+	}, from, to)
 }
 
 // weeklyStages reads only the proposed burner's staging events in the supplied
@@ -130,7 +137,8 @@ func summarizeFlowLogs(cfg chainConfig, target, hooker common.Address, logs []ty
 			if len(l.Topics) != 2 || len(l.Data) < 192 {
 				return flows{}, nil, malformed()
 			}
-			if common.BytesToAddress(l.Topics[1].Bytes()) == cfg.Burner && common.BytesToAddress(l.Data[32:64]) == target {
+			owner := common.BytesToAddress(l.Topics[1].Bytes())
+			if (owner == cfg.LegacyBurner || owner == cfg.Burner) && common.BytesToAddress(l.Data[32:64]) == target {
 				cow.Add(cow, flowWord(l.Data, 3))
 			}
 		case l.Address == cfg.Allocator && l.Topics[0] == feeDistributionEvent:

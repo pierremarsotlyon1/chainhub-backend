@@ -10,6 +10,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"golang.org/x/sync/errgroup"
+	"main/interfaces"
 	"main/utils"
 )
 
@@ -22,6 +23,19 @@ func installedBurner(ctx context.Context, r *reader, cfg chainConfig, head snaps
 		return common.Address{}, errors.New("invalid FeeCollector.burner() response")
 	}
 	return common.BytesToAddress(rows[0].Data), nil
+}
+
+// LegacyTargetUSD converts a legacy simulation's target-token amount at its current chain-specific price.
+func LegacyTargetUSD(pools []interfaces.CurvePool, chain string, token common.Address, amount float64) (float64, bool) {
+	if amount == 0 {
+		return 0, true
+	}
+	price := catalogForChain(pools, chain)[token].PriceUSD
+	usd := amount * price
+	if price <= 0 || !finite(usd) {
+		return 0, false
+	}
+	return usd, true
 }
 
 func legacyPending(cfg chainConfig, parts map[string]float64, tokens map[common.Address]tokenMeta) (*pending, error) {
@@ -66,12 +80,31 @@ func finite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
 
 // MigratedDistributionFees computes only the live Dutch networks. The existing
 // publisher computes the remaining networks and persists one combined result.
-func MigratedDistributionFees(ctx context.Context) (map[string]float64, error) {
-	rows, err := collectChains(ctx, networks, options{pools: "auto", forDistribution: true})
-	if err != nil {
-		return nil, err
+func MigratedDistributionFees(ctx context.Context, ethereumBlock uint64, pools []interfaces.CurvePool) (Distribution, error) {
+	var d Distribution
+	if ethereumBlock == 0 || len(pools) == 0 {
+		return d, errors.New("distribution requires an Ethereum block and pool catalog")
 	}
-	return distributionOverrides(rows.Chains)
+	rows, err := collectChains(ctx, networks, options{pools: "auto", forDistribution: true, ethereumBlock: ethereumBlock, poolCatalog: pools})
+	if err != nil {
+		return d, err
+	}
+	d.Migrated, err = distributionOverrides(rows.Chains)
+	if err != nil {
+		return d, err
+	}
+	for _, row := range rows.Chains {
+		if row.Chain == "ethereum" {
+			d.ethereum, d.EthereumBlockHash = row.dashboard, row.Block.Hash
+		}
+		if row.Pending != nil && row.Pending.Partial {
+			d.partial = true
+		}
+	}
+	if d.ethereum == nil {
+		return d, errors.New("missing Ethereum fee projection")
+	}
+	return d, nil
 }
 
 func distributionOverrides(rows []chainReport) (map[string]float64, error) {

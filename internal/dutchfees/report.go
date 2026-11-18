@@ -23,6 +23,7 @@ var networks = []chainConfig{
 }
 
 type pending struct {
+	beforeBuffer       float64
 	CollectorCrvUSD    string   `json:"collectorCrvUSD,omitempty"`
 	BurnerCrvUSD       string   `json:"installedBurnerCrvUSD,omitempty"`
 	HookerCrvUSD       string   `json:"hookerCrvUSD,omitempty"`
@@ -41,6 +42,7 @@ type pending struct {
 }
 
 type chainReport struct {
+	dashboard        *ethereumDashboard
 	Chain            string             `json:"chain"`
 	Block            snapshot           `json:"block"`
 	Phase            string             `json:"phase,omitempty"`
@@ -65,6 +67,14 @@ func beforeCollectCloses(p protocol) bool { return p.Phase == "sleep" || p.Phase
 func units(n *big.Int) float64 {
 	v, _ := new(big.Rat).SetFrac(n, big.NewInt(1e18)).Float64()
 	return v
+}
+
+func (p protocol) forwardable(potential float64) float64 {
+	amount := max(0, potential-units(p.CollectorBuffer))
+	if p.Phase == "forward" {
+		amount *= 1 - units(p.ForwardRate)
+	}
+	return amount
 }
 
 func makePending(cfg chainConfig, p protocol, s stock, pools *poolEstimate, targetPrice float64) pending {
@@ -119,12 +129,8 @@ func makePending(cfg chainConfig, p protocol, s stock, pools *poolEstimate, targ
 	if out.RemainingMarketUSD > 0 {
 		potential += out.RemainingMarketUSD / targetPrice
 	}
-	forwardable := max(0, potential-units(p.CollectorBuffer))
-	// Before FORWARD the eventual keeper timestamp is unknown. During FORWARD use its rate at the snapshot.
-	if p.Phase == "forward" {
-		forwardable *= 1 - units(p.ForwardRate)
-	}
-	total := forwardable + units(p.HookCash) + units(p.AllocatorCash)
+	out.beforeBuffer = potential
+	total := p.forwardable(potential) + units(p.HookCash) + units(p.AllocatorCash)
 	out.EstimateCrvUSD = &total
 	if cfg.Allocator != (common.Address{}) {
 		share := total * float64(p.Weight) / 10000
